@@ -13,12 +13,12 @@ use ParadiseSecurity\Component\SecretsManager\Key\KeyConfig;
 use ParadiseSecurity\Component\SecretsManager\Key\KeyInterface;
 use ParadiseSecurity\Component\SecretsManager\Key\KeyManager;
 use ParadiseSecurity\Component\SecretsManager\Key\KeyManagerInterface;
-use ParadiseSecurity\Component\SecretsManager\Secret\ChainVaultAdapter;
+use ParadiseSecurity\Component\SecretsManager\Adapter\Vault\ChainVaultAdapter;
 use ParadiseSecurity\Component\SecretsManager\Secret\Secret;
 use ParadiseSecurity\Component\SecretsManager\Secret\SecretInterface;
 use ParadiseSecurity\Component\SecretsManager\Secret\SecretManager;
 use ParadiseSecurity\Component\SecretsManager\Secret\SecretManagerInterface;
-use ParadiseSecurity\Component\SecretsManager\Secret\VaultAdapterInterface;
+use ParadiseSecurity\Component\SecretsManager\Adapter\Vault\VaultAdapterInterface;
 use ParadiseSecurity\Component\SecretsManager\Test\MockTrait;
 use ParagonIE\HiddenString\HiddenString;
 
@@ -29,28 +29,9 @@ final class SecretManagerTest extends TestCase
 {
     use MockTrait;
 
-    private $adapter;
-
-    private $manager;
-
-    private $auth;
-
     protected function setUp(): void
     {
         parent::setUp();
-
-        $this->adapter = $this->getMockBuilder(VaultAdapterInterface::class)
-            ->disableOriginalConstructor()
-            ->onlyMethods($this->getClassMethods(ChainVaultAdapter::class))
-            ->getMock();
-        $this->manager = $this->getMockBuilder(KeyManagerInterface::class)
-            ->disableOriginalConstructor()
-            ->onlyMethods($this->getClassMethods(KeyManager::class))
-            ->getMock();
-        $this->auth = $this->getMockBuilder(KeyInterface::class)
-            ->disableOriginalConstructor()
-            ->onlyMethods($this->getClassMethods(Key::class))
-            ->getMock();
     }
 
     public function testConstruct(): void
@@ -62,19 +43,29 @@ final class SecretManagerTest extends TestCase
 
     public function testGetSecret(): void
     {
-        $secret  = $this->getSecret();
-        $manager = $this->getManager();
-
-        $this->setupMethodGetMetadata();
-
-        $this->setupMethodConfigureSharedOptions();
-        $this->setupMethodConfigureGetSecretOptions();
-        $this->adapter->expects($this->exactly(1))
+        $secret = $this->getSecret();
+        
+        // Create mocks for both adapter and manager
+        $adapter = $this->createMock(VaultAdapterInterface::class);
+        $manager = $this->createMock(KeyManagerInterface::class);
+        $auth = $this->createAuthStub();
+        
+        $this->setupMethodGetMetadata($manager);
+        $this->setupMethodConfigureSharedOptions($adapter);
+        $this->setupMethodConfigureGetSecretOptions($adapter);
+        
+        $adapter->expects($this->once())
             ->method('getSecret')
             ->with($this->getSHMKey(), $this->getDefaultOptions())
             ->willReturn($secret);
 
-        $result = $manager->getSecret('api_key', $this->getDefaultOptions());
+        $manager->expects($this->once())
+            ->method('loadKeyring')
+            ->with($auth);
+
+        $secretManager = new SecretManager($adapter, $manager, $auth);
+
+        $result = $secretManager->getSecret('api_key', $this->getDefaultOptions());
         $this->assertInstanceOf(SecretInterface::class, $result);
         $this->assertEquals($secret, $result);
     }
@@ -85,80 +76,117 @@ final class SecretManagerTest extends TestCase
         $this->expectException(SecretNotFoundException::class);
         $this->expectExceptionMessage($error);
 
-        $manager = $this->getManager();
-
-        $this->setupMethodGetMetadata();
-
-        $this->setupMethodConfigureSharedOptions();
-        $this->setupMethodConfigureGetSecretOptions();
-        $this->adapter->expects($this->exactly(1))
+        $adapter = $this->createMock(VaultAdapterInterface::class);
+        $manager = $this->createMock(KeyManagerInterface::class);
+        $auth = $this->createAuthStub();
+        
+        $this->setupMethodGetMetadata($manager);
+        $this->setupMethodConfigureSharedOptions($adapter);
+        $this->setupMethodConfigureGetSecretOptions($adapter);
+        
+        $adapter->expects($this->once())
             ->method('getSecret')
             ->with('xk0QTphu7nxHfghl10zOng==', $this->getDefaultOptions())
             ->will($this->throwException(new SecretNotFoundException($error)));
 
-        $manager->getSecret('aws_secret_key', $this->getDefaultOptions());
+        $manager->expects($this->once())
+            ->method('loadKeyring')
+            ->with($auth);
+
+        $secretManager = new SecretManager($adapter, $manager, $auth);
+
+        $secretManager->getSecret('aws_secret_key', $this->getDefaultOptions());
     }
 
     public function testPutSecret(): void
     {
-        $secret  = $this->getSecret();
-        $manager = $this->getManager();
-
-        $this->setupMethodConfigureSharedOptions();
-        $this->adapter->expects($this->exactly(1))
+        $secret = $this->getSecret();
+        
+        $adapter = $this->createMock(VaultAdapterInterface::class);
+        $manager = $this->createMock(KeyManagerInterface::class);
+        $auth = $this->createAuthStub();
+        
+        $this->setupMethodConfigureSharedOptions($adapter);
+        
+        $adapter->expects($this->once())
             ->method('configurePutSecretOptions');
-        $this->adapter->expects($this->exactly(1))
+        $adapter->expects($this->once())
             ->method('putSecret')
             ->with($secret, $this->getDefaultOptions())
             ->willReturn($secret);
 
-        $response = $manager->putSecret($secret, $this->getDefaultOptions());
+        $manager->expects($this->once())
+            ->method('loadKeyring')
+            ->with($auth);
+
+        $secretManager = new SecretManager($adapter, $manager, $auth);
+
+        $response = $secretManager->putSecret($secret, $this->getDefaultOptions());
         $this->assertEquals($secret, $response);
     }
 
     public function testDeleteSecretByKey(): void
     {
-        $secret  = $this->getSecret();
-        $manager = $this->getManager();
-
-        $this->setupMethodGetMetadata();
-
-        $this->setupMethodConfigureSharedOptions(2);
-        $this->setupMethodConfigureGetSecretOptions();
-        $this->adapter->expects($this->exactly(1))
+        $secret = $this->getSecret();
+        
+        $adapter = $this->createMock(VaultAdapterInterface::class);
+        $manager = $this->createMock(KeyManagerInterface::class);
+        $auth = $this->createAuthStub();
+        
+        $this->setupMethodGetMetadata($manager);
+        $this->setupMethodConfigureSharedOptions($adapter, 2);
+        $this->setupMethodConfigureGetSecretOptions($adapter);
+        
+        $adapter->expects($this->once())
             ->method('getSecret')
             ->with($this->getSHMKey(), $this->getDefaultOptions())
             ->willReturn($secret);
-        $this->adapter->expects($this->exactly(1))
+        $adapter->expects($this->once())
             ->method('configureDeleteSecretOptions');
-        $this->adapter->expects($this->exactly(1))
+        $adapter->expects($this->once())
             ->method('deleteSecret')
             ->with($secret, $this->getDefaultOptions());
 
-        $manager->deleteSecretByKey('api_key', $this->getDefaultOptions());
+        $manager->expects($this->once())
+            ->method('loadKeyring')
+            ->with($auth);
+
+        $secretManager = new SecretManager($adapter, $manager, $auth);
+
+        $secretManager->deleteSecretByKey('api_key', $this->getDefaultOptions());
     }
 
     public function testDeleteSecret(): void
     {
-        $secret  = $this->getSecret();
-        $manager = $this->getManager();
-
-        $this->setupMethodConfigureSharedOptions();
-        $this->adapter->expects($this->exactly(1))
+        $secret = $this->getSecret();
+        
+        $adapter = $this->createMock(VaultAdapterInterface::class);
+        $manager = $this->createMock(KeyManagerInterface::class);
+        $auth = $this->createAuthStub();
+        
+        $this->setupMethodConfigureSharedOptions($adapter);
+        
+        $adapter->expects($this->once())
             ->method('configureDeleteSecretOptions');
-        $this->adapter->expects($this->exactly(1))
+        $adapter->expects($this->once())
             ->method('deleteSecret')
             ->with($secret, $this->getDefaultOptions());
 
-        $manager->deleteSecret($secret, $this->getDefaultOptions());
+        $manager->expects($this->once())
+            ->method('loadKeyring')
+            ->with($auth);
+
+        $secretManager = new SecretManager($adapter, $manager, $auth);
+
+        $secretManager->deleteSecret($secret, $this->getDefaultOptions());
     }
 
     public function testGetVaultAdapter(): void
     {
         $manager = $this->getManager();
 
-        $this->assertEquals($this->adapter, $manager->getVaultAdapter());
-        $this->assertInstanceOf(VaultAdapterInterface::class, $manager->getVaultAdapter());
+        $adapter = $manager->getVaultAdapter();
+        $this->assertInstanceOf(VaultAdapterInterface::class, $adapter);
     }
 
     public function testMissingVaultException(): void
@@ -174,123 +202,210 @@ final class SecretManagerTest extends TestCase
 
     public function testGet(): void
     {
-        $secret  = $this->getSecret();
-        $manager = $this->getManager();
-
-        $this->setupMethodGetMetadata();
-
-        $this->setupMethodConfigureSharedOptions();
-        $this->setupMethodConfigureGetSecretOptions();
-        $this->adapter->expects($this->exactly(1))
+        $secret = $this->getSecret();
+        
+        $adapter = $this->createMock(VaultAdapterInterface::class);
+        $manager = $this->createMock(KeyManagerInterface::class);
+        $auth = $this->createAuthStub();
+        
+        $this->setupMethodGetMetadata($manager);
+        $this->setupMethodConfigureSharedOptions($adapter);
+        $this->setupMethodConfigureGetSecretOptions($adapter);
+        
+        $adapter->expects($this->once())
             ->method('getSecret')
             ->with($this->getSHMKey(), $this->getDefaultOptions())
             ->willReturn($secret);
 
-        $value = $manager->vault('classified')->get('api_key');
+        $manager->expects($this->once())
+            ->method('loadKeyring')
+            ->with($auth);
+
+        $secretManager = new SecretManager($adapter, $manager, $auth);
+
+        $value = $secretManager->vault('classified')->get('api_key');
         $this->assertEquals('secret_value', $value);
     }
 
     public function testNewVault(): void
     {
-        $manager = $this->getManager();
-
+        $adapter = $this->createStub(VaultAdapterInterface::class);
+        $manager = $this->createMock(KeyManagerInterface::class);
+        $auth = $this->createAuthStub();
+        
         $kmsKeyConfig = new KeyConfig(KeyFactoryInterface::SYMMETRIC_ENCRYPTION_KEY);
         $cacheKeyConfig = new KeyConfig(KeyFactoryInterface::SYMMETRIC_AUTHENTICATION_KEY);
 
-        $key = clone $this->auth;
+        $key = $this->createKeyStub();
 
-        $this->manager->expects($this->exactly(1))
+        $manager->expects($this->once())
+            ->method('loadKeyring')
+            ->with($auth);
+
+        $manager->expects($this->once())
             ->method('unlockKeyring')
-            ->with($this->auth);
-        $this->manager->expects($this->exactly(1))
+            ->with($auth);
+            
+        $manager->expects($this->once())
             ->method('hasVault')
             ->with('irs_secrets')
             ->willReturn(false);
-        $this->manager->expects($this->exactly(2))
+
+        $newKeyCall = 0;
+        $manager
+            ->expects($this->exactly(2))
             ->method('newKey')
-            ->withConsecutive(
-                ['irs_secrets', 'kms_key', $kmsKeyConfig],
-                ['irs_secrets', 'cache_key', $cacheKeyConfig]
-            )
-            ->willReturnOnConsecutiveCalls($key, $key);
-        $this->manager->expects($this->exactly(1))
+            ->willReturnCallback(
+                function (string $vault, string $name, KeyConfig $config) use (
+                    &$newKeyCall,
+                    $kmsKeyConfig,
+                    $cacheKeyConfig,
+                    $key
+                ) {
+                    $newKeyCall++;
+
+                    if ($newKeyCall === 1) {
+                        \PHPUnit\Framework\Assert::assertSame('irs_secrets', $vault);
+                        \PHPUnit\Framework\Assert::assertSame('kms_key', $name);
+                        \PHPUnit\Framework\Assert::assertEquals($kmsKeyConfig, $config);
+                    } elseif ($newKeyCall === 2) {
+                        \PHPUnit\Framework\Assert::assertSame('irs_secrets', $vault);
+                        \PHPUnit\Framework\Assert::assertSame('cache_key', $name);
+                        \PHPUnit\Framework\Assert::assertEquals($cacheKeyConfig, $config);
+                    } else {
+                        \PHPUnit\Framework\Assert::fail('newKey called more than twice');
+                    }
+
+                    return $key;
+                }
+            );
+
+        $manager->expects($this->once())
             ->method('getRawKeyMaterial')
             ->with($key)
             ->willReturn(new HiddenString(
                 hex2bin('9f7fc445a91f3322674b2c63f29f2ba6e40848065f4d88c98213d355048daecc')
             ));
-        $this->manager->expects($this->exactly(2))
-            ->method('addMetadata')
-            ->withConsecutive(
-                ['irs_secrets', 'cache_key_l', hex2bin('9f7fc445a91f3322674b2c63f29f2ba6')],
-                ['irs_secrets', 'cache_key_r', hex2bin('e40848065f4d88c98213d355048daecc')]
-            );
-        $this->manager->expects($this->exactly(1))
-            ->method('saveKeyring')
-            ->with($this->auth);
 
-        $manager->newVault('irs_secrets');
+        $addMetadataCall = 0;
+        $manager
+            ->expects($this->exactly(2))
+            ->method('addMetadata')
+            ->willReturnCallback(
+                function (string $vault, string $name, string $value) use (&$addMetadataCall) {
+                    $addMetadataCall++;
+
+                    if ($addMetadataCall === 1) {
+                        \PHPUnit\Framework\Assert::assertSame('irs_secrets', $vault);
+                        \PHPUnit\Framework\Assert::assertSame('cache_key_l', $name);
+                        \PHPUnit\Framework\Assert::assertSame(
+                            hex2bin('9f7fc445a91f3322674b2c63f29f2ba6'),
+                            $value
+                        );
+                    } elseif ($addMetadataCall === 2) {
+                        \PHPUnit\Framework\Assert::assertSame('irs_secrets', $vault);
+                        \PHPUnit\Framework\Assert::assertSame('cache_key_r', $name);
+                        \PHPUnit\Framework\Assert::assertSame(
+                            hex2bin('e40848065f4d88c98213d355048daecc'),
+                            $value
+                        );
+                    } else {
+                        \PHPUnit\Framework\Assert::fail('addMetadata called more than twice');
+                    }
+
+                    return null;
+                }
+            );
+
+        $manager->expects($this->once())
+            ->method('saveKeyring')
+            ->with($auth);
+
+        $secretManager = new SecretManager($adapter, $manager, $auth);
+
+        $secretManager->newVault('irs_secrets');
     }
 
     public function testDeleteVault(): void
     {
-        $manager = $this->getManager();
-
-        $this->setupMethodConfigureSharedOptions();
-        $this->adapter->expects($this->exactly(1))
+        $adapter = $this->createMock(VaultAdapterInterface::class);
+        $manager = $this->createMock(KeyManagerInterface::class);
+        $auth = $this->createAuthStub();
+        
+        $this->setupMethodConfigureSharedOptions($adapter);
+        
+        $adapter->expects($this->once())
             ->method('configureDeleteSecretOptions')
-            ->will(
-                $this->returnCallback(function ($resolver) {
-                    $resolver->define('delete_all')->default(false);
-                })
-            );
-        $this->adapter->expects($this->exactly(1))
+            ->willReturnCallback(function ($resolver) {
+                $resolver->define('delete_all')->default(false);
+            });
+        $adapter->expects($this->once())
             ->method('deleteVault')
             ->with(array_merge($this->getDefaultOptions(), ['delete_all' => true]));
 
-        $this->manager->expects($this->exactly(1))
+        $manager->expects($this->once())
+            ->method('loadKeyring')
+            ->with($auth);
+
+        $manager->expects($this->once())
             ->method('unlockKeyring')
-            ->with($this->auth);
-        $this->manager->expects($this->exactly(1))
+            ->with($auth);
+            
+        $manager->expects($this->once())
             ->method('flushVault')
             ->with('classified');
-        $this->manager->expects($this->exactly(1))
+            
+        $manager->expects($this->once())
             ->method('saveKeyring')
-            ->with($this->auth);
+            ->with($auth);
 
-        $manager->deleteVault('classified');
+        $secretManager = new SecretManager($adapter, $manager, $auth);
+
+        $secretManager->deleteVault('classified');
     }
 
-    protected function setupMethodConfigureGetSecretOptions(): void
+    protected function setupMethodConfigureGetSecretOptions(VaultAdapterInterface $adapter): void
     {
-        $this->adapter->expects($this->exactly(1))
+        $adapter->expects($this->once())
             ->method('configureGetSecretOptions');
     }
 
-    protected function setupMethodGetMetadata(): void
+    protected function setupMethodGetMetadata(KeyManagerInterface $manager): void
     {
-        $this->manager->expects($this->exactly(2))
+        $call = 0;
+
+        $manager
+            ->expects($this->exactly(2))
             ->method('getMetadata')
-            ->withConsecutive(
-                ['classified', 'cache_key_l'],
-                ['classified', 'cache_key_r']
-            )
-            ->willReturnOnConsecutiveCalls(
-                hex2bin('9f7fc445a91f3322674b2c63f29f2ba6'),
-                hex2bin('e40848065f4d88c98213d355048daecc')
+            ->willReturnCallback(
+                function (string $vault, string $name) use (&$call) {
+                    $call++;
+
+                    if ($call === 1) {
+                        \PHPUnit\Framework\Assert::assertSame('classified', $vault);
+                        \PHPUnit\Framework\Assert::assertSame('cache_key_l', $name);
+
+                        return hex2bin('9f7fc445a91f3322674b2c63f29f2ba6');
+                    } elseif ($call === 2) {
+                        \PHPUnit\Framework\Assert::assertSame('classified', $vault);
+                        \PHPUnit\Framework\Assert::assertSame('cache_key_r', $name);
+
+                        return hex2bin('e40848065f4d88c98213d355048daecc');
+                    }
+
+                    \PHPUnit\Framework\Assert::fail('getMetadata called more than twice');
+                }
             );
     }
 
-    protected function setupMethodConfigureSharedOptions(int $times = 1): void
+    protected function setupMethodConfigureSharedOptions(VaultAdapterInterface $adapter, int $times = 1): void
     {
-        $this->adapter->expects($this->exactly($times))
+        $adapter->expects($this->exactly($times))
             ->method('configureSharedOptions')
-            ->will(
-                $this->returnCallback(function ($resolver) {
-                    $resolver->setIgnoreUndefined(true);
-                    $resolver->define('vault');
-                })
-            );
+            ->willReturnCallback(function ($resolver) {
+                $resolver->setIgnoreUndefined(true);
+                $resolver->define('vault');
+            });
     }
 
     protected function getSHMKey(): string
@@ -310,13 +425,34 @@ final class SecretManagerTest extends TestCase
 
     protected function getManager(): SecretManagerInterface
     {
-        $this->auth->expects($this->exactly(1))
-            ->method('getType')
+        $adapter = $this->createStub(VaultAdapterInterface::class);
+        $manager = $this->createMock(KeyManagerInterface::class);
+        $auth = $this->createAuthStub();
+
+        $manager->expects($this->once())
+            ->method('loadKeyring')
+            ->with($auth);
+
+        return new SecretManager($adapter, $manager, $auth);
+    }
+
+    /**
+     * Create a stub for KeyInterface configured as an authentication key.
+     */
+    protected function createAuthStub(): KeyInterface
+    {
+        $auth = $this->createStub(KeyInterface::class);
+        $auth->method('getType')
             ->willReturn(KeyFactoryInterface::SYMMETRIC_AUTHENTICATION_KEY);
+        
+        return $auth;
+    }
 
-        $this->manager->expects($this->exactly(1))
-            ->method('loadKeyring');
-
-        return new SecretManager($this->adapter, $this->manager, $this->auth);
+    /**
+     * Create a stub for a generic KeyInterface.
+     */
+    protected function createKeyStub(): KeyInterface
+    {
+        return $this->createStub(KeyInterface::class);
     }
 }

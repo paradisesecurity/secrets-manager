@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace ParadiseSecurity\Component\SecretsManager\Installer\Setup;
 
 use Doctrine\Common\Collections\Collection;
-use ParadiseSecurity\Component\SecretsManager\Factory\KeyFactoryAdapterInterface;
+use ParadiseSecurity\Component\SecretsManager\Adapter\KeyFactory\KeyFactoryAdapterInterface;
 use ParadiseSecurity\Component\SecretsManager\Provider\AdapterBasedKeyProvider;
 use ParadiseSecurity\Component\SecretsManager\Provider\AdapterBasedKeyProviderInterface;
 use ParadiseSecurity\Component\ServiceRegistry\Registry\PrioritizedServiceRegistry;

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace ParadiseSecurity\Component\SecretsManager\File;
 
+use ParadiseSecurity\Component\SecretsManager\Adapter\Filesystem\FilesystemAdapterInterface;
 use Laminas\Stdlib\PriorityQueue;
 use ParadiseSecurity\Component\SecretsManager\Exception\FilesystemNotFoundException;
 
@@ -85,7 +86,7 @@ final class FilesystemManager implements FilesystemManagerInterface
         $this->connections[$connection]->insert($adapter, $priority);
     }
 
-    public function getFilesystem(string $connection, string $path = null): FilesystemAdapterInterface
+    public function getFilesystem(string $connection, ?string $path = null): FilesystemAdapterInterface
     {
         $filesystems = new PriorityQueue();
 

@@ -4,9 +4,8 @@ declare(strict_types=1);
 
 namespace ParadiseSecurity\Component\SecretsManager\Key;
 
-use ParadiseSecurity\Component\SecretsManager\Encryption\EncryptionAdapterInterface;
+use ParadiseSecurity\Component\SecretsManager\Adapter\Encryption\EncryptionAdapterInterface;
 use ParadiseSecurity\Component\SecretsManager\Factory\KeyFactoryInterface;
-use ParadiseSecurity\Component\SecretsManager\Provider\MasterKeyProviderInterface;
 use ParagonIE\HiddenString\HiddenString;
 
 interface KeyManagerInterface
@@ -16,8 +15,6 @@ interface KeyManagerInterface
     public const KEYRING_NAME = 'development';
 
     public const KEYRING_EXTENSION = '.keyring';
-
-    public function setAccessor(MasterKeyProviderInterface $keyProvider, KeyManagerInterface $keyManager, string $accessor);
 
     public function flushVault(string $vault): void;
 
@@ -29,7 +26,7 @@ interface KeyManagerInterface
 
     public function hasVault(string $vault): bool;
 
-    public function generateKey(KeyConfigInterface $config, string $adapter = null): ?KeyInterface;
+    public function generateKey(KeyConfigInterface $config, ?string $adapter = null): ?KeyInterface;
 
     public function getRawKeyMaterial(KeyInterface $key): HiddenString;
 
@@ -47,7 +44,7 @@ interface KeyManagerInterface
 
     public function newAuth(): ?KeyInterface;
 
-    public function newKeyring(KeyInterface $authKey = null): ?KeyInterface;
+    public function newKeyring(?KeyInterface $authKey = null): ?KeyInterface;
 
     public function lockKeyring(KeyInterface $authKey): void;
 
@@ -58,4 +55,6 @@ interface KeyManagerInterface
     public function loadKeyring(KeyInterface $authKey): void;
 
     public function saveKeyring(KeyInterface $authKey): void;
+
+    public function rotateKeys(string $vault, array $keyNames = []): bool;
 }

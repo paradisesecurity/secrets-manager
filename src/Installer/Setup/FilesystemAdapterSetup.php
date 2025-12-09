@@ -7,8 +7,8 @@ namespace ParadiseSecurity\Component\SecretsManager\Installer\Setup;
 use League\Flysystem\Filesystem;
 use League\Flysystem\Local\LocalFilesystemAdapter;
 use League\Flysystem\UnixVisibility\PortableVisibilityConverter;
-use ParadiseSecurity\Component\SecretsManager\File\FilesystemAdapterInterface;
-use ParadiseSecurity\Component\SecretsManager\File\FlysystemFilesystemAdapter;
+use ParadiseSecurity\Component\SecretsManager\Adapter\Filesystem\FilesystemAdapterInterface;
+use ParadiseSecurity\Component\SecretsManager\Adapter\Filesystem\FlysystemFilesystemAdapter;
 
 final class FilesystemAdapterSetup implements FilesystemAdapterSetupInterface
 {

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace ParadiseSecurity\Component\SecretsManager\File;
 
+use ParadiseSecurity\Component\SecretsManager\Adapter\Filesystem\FilesystemAdapterInterface;
+
 interface FilesystemManagerInterface
 {
     public const KEYRING = 'keyring';
@@ -32,5 +34,5 @@ interface FilesystemManagerInterface
 
     public function insert(FilesystemAdapterInterface $adapter, string $connection, int $priority = 0): void;
 
-    public function getFilesystem(string $connection, string $path = null): FilesystemAdapterInterface;
+    public function getFilesystem(string $connection, ?string $path = null): FilesystemAdapterInterface;
 }

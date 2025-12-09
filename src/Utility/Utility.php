@@ -38,7 +38,7 @@ final class Utility implements UtilityInterface
     public static function subString(
         string $str,
         int $start,
-        int $length = null
+        ?int $length = null
     ): string {
         try {
             return Binary::safeSubstr($str, $start, $length);

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace ParadiseSecurity\Component\SecretsManager\Provider;
 
-use ParadiseSecurity\Component\SecretsManager\Factory\KeyFactoryAdapterInterface;
+use ParadiseSecurity\Component\SecretsManager\Adapter\KeyFactory\KeyFactoryAdapterInterface;
 
 interface AdapterBasedKeyProviderInterface
 {

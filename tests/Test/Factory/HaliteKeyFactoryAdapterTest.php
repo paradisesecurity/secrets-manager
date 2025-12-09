@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace ParadiseSecurity\Component\SecretsManager\Test\Factory;
 
 use PHPUnit\Framework\TestCase;
-use ParadiseSecurity\Component\SecretsManager\Factory\HaliteKeyFactoryAdapter;
+use ParadiseSecurity\Component\SecretsManager\Adapter\KeyFactory\HaliteKeyFactoryAdapter;
 use ParadiseSecurity\Component\SecretsManager\Factory\KeyFactoryInterface;
 use ParadiseSecurity\Component\SecretsManager\Key\KeyConfig;
 use ParadiseSecurity\Component\SecretsManager\Key\KeyConfigInterface;
@@ -14,6 +14,7 @@ use ParagonIE\Halite\Asymmetric\EncryptionSecretKey;
 use ParagonIE\Halite\Asymmetric\SignaturePublicKey;
 use ParagonIE\Halite\Asymmetric\SignatureSecretKey;
 use ParagonIE\HiddenString\HiddenString;
+use ParadiseSecurity\Component\SecretsManager\Adapter\Encryption\HaliteEncryptionAdapter;
 
 use function bin2hex;
 
@@ -28,7 +29,8 @@ final class HaliteKeyFactoryAdapterTest extends TestCase
             $type,
             [
                 KeyConfigInterface::PASSWORD => new HiddenString('apple'),
-                KeyConfigInterface::SALT => "\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f"
+                KeyConfigInterface::SALT => "\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f",
+                KeyConfigInterface::VERSION => HaliteEncryptionAdapter::CURRENT_VERSION
             ]
         );
         $config->addOptions($options);
@@ -78,7 +80,8 @@ final class HaliteKeyFactoryAdapterTest extends TestCase
             KeyFactoryInterface::ASYMMETRIC_SIGNATURE_KEY_PAIR,
             [
                 KeyConfigInterface::PASSWORD => new HiddenString('apple'),
-                KeyConfigInterface::SALT => "\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f"
+                KeyConfigInterface::SALT => "\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f",
+                KeyConfigInterface::VERSION => HaliteEncryptionAdapter::CURRENT_VERSION
             ]
         );
         $keypair = $adapter->generateKey($config);
@@ -101,7 +104,7 @@ final class HaliteKeyFactoryAdapterTest extends TestCase
     public function testSplitEncryptionKeyPair()
     {
         $adapter = new HaliteKeyFactoryAdapter();
-        $config = new KeyConfig(KeyFactoryInterface::ASYMMETRIC_ENCRYPTION_KEY_PAIR);
+        $config = new KeyConfig(KeyFactoryInterface::ASYMMETRIC_ENCRYPTION_KEY_PAIR, [KeyConfigInterface::VERSION => HaliteEncryptionAdapter::CURRENT_VERSION]);
         $keypair = $adapter->generateKey($config);
         $this->assertSame(
             $keypair->getType(),

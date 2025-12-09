@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace ParadiseSecurity\Component\SecretsManager\Provider;
 
 use ParadiseSecurity\Component\SecretsManager\Exception\UnresolvedKeyProviderException;
-use ParadiseSecurity\Component\SecretsManager\Factory\KeyFactoryAdapterInterface;
+use ParadiseSecurity\Component\SecretsManager\Adapter\KeyFactory\KeyFactoryAdapterInterface;
 use ParadiseSecurity\Component\ServiceRegistry\Registry\PrioritizedServiceRegistryInterface;
 
 final class AdapterBasedKeyProvider implements AdapterBasedKeyProviderInterface

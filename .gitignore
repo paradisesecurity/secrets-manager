@@ -4,8 +4,14 @@ config/secrets-manager/test/keyring/*.checksum
 config/secrets-manager/test/master-keys/*.key
 config/secrets-manager/test/config.json
 config/secrets-manager/test/secrets/*.vault
+docs/getting-started.md
+docs/examples.md
+docs/configuration.md
+docs/architecture.md
+.phpunit.cache/
 
 composer.phar
 composer.lock
 .phpunit.result.cache
 .env.test
+CHANGELOG.md

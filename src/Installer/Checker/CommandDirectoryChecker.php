@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace ParadiseSecurity\Component\SecretsManager\Installer\Checker;
 
 use ParadiseSecurity\Component\SecretsManager\Exception\FilesystemErrorException;
-use ParadiseSecurity\Component\SecretsManager\File\FilesystemAdapterInterface;
+use ParadiseSecurity\Component\SecretsManager\Adapter\Filesystem\FilesystemAdapterInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
 use function sprintf;

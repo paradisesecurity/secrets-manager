@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace ParadiseSecurity\Component\SecretsManager\Test\Key;
 
 use PHPUnit\Framework\TestCase;
-use ParadiseSecurity\Component\SecretsManager\Encryption\HaliteEncryptionAdapter;
+use ParadiseSecurity\Component\SecretsManager\Adapter\Encryption\HaliteEncryptionAdapter;
 use ParadiseSecurity\Component\SecretsManager\Factory\KeyFactoryInterface;
 use ParadiseSecurity\Component\SecretsManager\Key\Key;
 use ParadiseSecurity\Component\SecretsManager\Key\KeyInterface;

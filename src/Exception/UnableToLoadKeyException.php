@@ -6,7 +6,7 @@ namespace ParadiseSecurity\Component\SecretsManager\Exception;
 
 class UnableToLoadKeyException extends \Exception
 {
-    public function __construct(?string $message = null, \Exception $previousException = null)
+    public function __construct(?string $message = null, ?\Exception $previousException = null)
     {
         parent::__construct($message ?: 'Unable to load key.', 0, $previousException);
     }

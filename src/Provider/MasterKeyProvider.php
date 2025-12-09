@@ -8,16 +8,12 @@ use ParadiseSecurity\Component\SecretsManager\Exception\MissingEncryptionKeyExce
 use ParadiseSecurity\Component\SecretsManager\Exception\UnableToLoadKeyException;
 use ParadiseSecurity\Component\SecretsManager\Factory\KeyFactoryInterface;
 use ParadiseSecurity\Component\SecretsManager\Key\KeyInterface;
-use ParadiseSecurity\Component\SecretsManager\Key\KeyManagerInterface;
 use ParadiseSecurity\Component\SecretsManager\Loader\DelegatingKeyLoaderInterface;
-use ParadiseSecurity\Component\SecretsManager\Utility\Utility;
 
 use function is_null;
 
 final class MasterKeyProvider implements MasterKeyProviderInterface
 {
-    private string $accessor;
-
     private KeyInterface $encryptionKey;
 
     private KeyInterface $signatureKeyPair;
@@ -37,26 +33,12 @@ final class MasterKeyProvider implements MasterKeyProviderInterface
         private DelegatingKeyLoaderInterface $delegatingKeyLoader,
         private string $loader
     ) {
+        // The loader handles ALL security checks
         $this->loadMasterKeys();
-        $this->accessor = Utility::createUniqueId(MasterKeyProviderInterface::UNIQUE_ID_LENGTH);
     }
 
-    public function setAccessor(
-        KeyManagerInterface $keyManager,
-        MasterKeyProviderInterface $keyProvider
-    ): void {
-        if ($keyProvider === $this) {
-            $keyManager->setAccessor($this, $keyManager, $this->accessor);
-        }
-    }
-
-    public function getKeys(string $accessor): array
+    public function getKeys(): array
     {
-        $keys = [];
-        if ($accessor !== $this->accessor) {
-            return $keys;
-        }
-
         $keys[] = $this->encryptionKey;
 
         if ($this->hasSignatureKeyPair()) {
@@ -70,13 +52,9 @@ final class MasterKeyProvider implements MasterKeyProviderInterface
         return $keys;
     }
 
-    public function getEncryptionKey(string $accessor): ?KeyInterface
+    public function getEncryptionKey(): KeyInterface
     {
-        if ($accessor === $this->accessor) {
-            return $this->encryptionKey;
-        }
-
-        return null;
+        return $this->encryptionKey;
     }
 
     public function hasSignatureKeyPair(): bool
@@ -84,31 +62,19 @@ final class MasterKeyProvider implements MasterKeyProviderInterface
         return isset($this->signatureKeyPair);
     }
 
-    public function getSignatureKeyPair(string $accessor): ?KeyInterface
+    public function getSignatureKeyPair(): KeyInterface
     {
-        if ($accessor === $this->accessor) {
-            return $this->signatureKeyPair;
-        }
-
-        return null;
+        return this->signatureKeyPair;
     }
 
-    public function getSignatureSecretKey(string $accessor): ?KeyInterface
+    public function getSignatureSecretKey(): KeyInterface
     {
-        if ($accessor === $this->accessor) {
-            return $this->signatureSecretKey;
-        }
-
-        return null;
+        return $this->signatureSecretKey;
     }
 
-    public function getSignaturePublicKey(string $accessor): ?KeyInterface
+    public function getSignaturePublicKey(): KeyInterface
     {
-        if ($accessor === $this->accessor) {
-            return $this->signaturePublicKey;
-        }
-
-        return null;
+        return $this->signaturePublicKey;
     }
 
     private function loadMasterKeys(): void

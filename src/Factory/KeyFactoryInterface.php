@@ -4,41 +4,30 @@ declare(strict_types=1);
 
 namespace ParadiseSecurity\Component\SecretsManager\Factory;
 
+use ParadiseSecurity\Component\SecretsManager\Key\KeyTypeConstants;
 use ParadiseSecurity\Component\SecretsManager\Key\KeyConfigInterface;
 use ParadiseSecurity\Component\SecretsManager\Key\KeyInterface;
 use ParagonIE\HiddenString\HiddenString;
+use ParadiseSecurity\Component\SecretsManager\Adapter\KeyFactory\KeyFactoryAdapterInterface;
 
 interface KeyFactoryInterface
 {
-    public const ASYMMETRIC_ENCRYPTION_KEY_PAIR = 'asymmetric_encryption_key_pair';
-
-    public const ASYMMETRIC_ENCRYPTION_PUBLIC_KEY = 'asymmetric_encryption_public_key';
-
-    public const ASYMMETRIC_ENCRYPTION_SECRET_KEY = 'asymmetric_encryption_secret_key';
-
-    public const ASYMMETRIC_SIGNATURE_KEY_PAIR = 'asymmetric_signature_key_pair';
-
-    public const ASYMMETRIC_SIGNATURE_PUBLIC_KEY = 'asymmetric_signature_public_key';
-
-    public const ASYMMETRIC_SIGNATURE_SECRET_KEY = 'asymmetric_signature_secret_key';
-
-    public const SYMMETRIC_AUTHENTICATION_KEY = 'symmetric_authentication_key';
-
-    public const SYMMETRIC_ENCRYPTION_KEY = 'symmetric_encryption_key';
-
-    public const SYMMETRIC_ENCRYPTION_PUBLIC_KEY = 'symmetric_encryption_public_key';
-
-    public const SYMMETRIC_ENCRYPTION_SECRET_KEY = 'symmetric_encryption_secret_key';
-
-    public const SYMMETRIC_SIGNATURE_PUBLIC_KEY = 'symmetric_signature_public_key';
-
-    public const SYMMETRIC_SIGNATURE_SECRET_KEY = 'symmetric_signature_secret_key';
-
-    public const UNKNOWN_KEY = 'unknown_key';
-
-    public const HEX_KEY = 'hex_key';
-
-    public const RAW_KEY = 'raw_key';
+    // Reference the central values - defined once, used everywhere
+    public const ASYMMETRIC_ENCRYPTION_KEY_PAIR = KeyTypeConstants::ASYMMETRIC_ENCRYPTION_KEY_PAIR;
+    public const ASYMMETRIC_ENCRYPTION_PUBLIC_KEY = KeyTypeConstants::ASYMMETRIC_ENCRYPTION_PUBLIC_KEY;
+    public const ASYMMETRIC_ENCRYPTION_SECRET_KEY = KeyTypeConstants::ASYMMETRIC_ENCRYPTION_SECRET_KEY;
+    public const ASYMMETRIC_SIGNATURE_KEY_PAIR = KeyTypeConstants::ASYMMETRIC_SIGNATURE_KEY_PAIR;
+    public const ASYMMETRIC_SIGNATURE_PUBLIC_KEY = KeyTypeConstants::ASYMMETRIC_SIGNATURE_PUBLIC_KEY;
+    public const ASYMMETRIC_SIGNATURE_SECRET_KEY = KeyTypeConstants::ASYMMETRIC_SIGNATURE_SECRET_KEY;
+    public const SYMMETRIC_AUTHENTICATION_KEY = KeyTypeConstants::SYMMETRIC_AUTHENTICATION_KEY;
+    public const SYMMETRIC_ENCRYPTION_KEY = KeyTypeConstants::SYMMETRIC_ENCRYPTION_KEY;
+    public const SYMMETRIC_ENCRYPTION_PUBLIC_KEY = KeyTypeConstants::SYMMETRIC_ENCRYPTION_PUBLIC_KEY;
+    public const SYMMETRIC_ENCRYPTION_SECRET_KEY = KeyTypeConstants::SYMMETRIC_ENCRYPTION_SECRET_KEY;
+    public const SYMMETRIC_SIGNATURE_PUBLIC_KEY = KeyTypeConstants::SYMMETRIC_SIGNATURE_PUBLIC_KEY;
+    public const SYMMETRIC_SIGNATURE_SECRET_KEY = KeyTypeConstants::SYMMETRIC_SIGNATURE_SECRET_KEY;
+    public const UNKNOWN_KEY = KeyTypeConstants::UNKNOWN_KEY;
+    public const HEX_KEY = KeyTypeConstants::HEX_KEY;
+    public const RAW_KEY = KeyTypeConstants::RAW_KEY;
 
     public function getAdapter(string $adapter): KeyFactoryAdapterInterface;
 

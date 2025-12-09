@@ -5,13 +5,13 @@ declare(strict_types=1);
 namespace ParadiseSecurity\Component\SecretsManager\Test\Encryption;
 
 use PHPUnit\Framework\TestCase;
-use ParadiseSecurity\Component\SecretsManager\Encryption\EncryptionAdapterInterface;
+use ParadiseSecurity\Component\SecretsManager\Adapter\Encryption\EncryptionAdapterInterface;
 use ParadiseSecurity\Component\SecretsManager\Encryption\EncryptionRequestInterface;
-use ParadiseSecurity\Component\SecretsManager\Encryption\HaliteEncryptionAdapter;
+use ParadiseSecurity\Component\SecretsManager\Adapter\Encryption\HaliteEncryptionAdapter;
 use ParadiseSecurity\Component\SecretsManager\Encryption\MessageEncryptionRequest;
 use ParadiseSecurity\Component\SecretsManager\Exception\UnableToEncryptMessageException;
-use ParadiseSecurity\Component\SecretsManager\Factory\HaliteKeyFactoryAdapter;
-use ParadiseSecurity\Component\SecretsManager\Factory\KeyFactoryAdapterInterface;
+use ParadiseSecurity\Component\SecretsManager\Adapter\KeyFactory\HaliteKeyFactoryAdapter;
+use ParadiseSecurity\Component\SecretsManager\Adapter\KeyFactory\KeyFactoryAdapterInterface;
 use ParadiseSecurity\Component\SecretsManager\Factory\KeyFactoryInterface;
 use ParadiseSecurity\Component\SecretsManager\Key\Key;
 use ParadiseSecurity\Component\SecretsManager\Key\KeyInterface;

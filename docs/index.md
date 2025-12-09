@@ -22,6 +22,27 @@ It's advisable that you use the console command to create your master keys.
 php ./vendor/bin/secrets-manager setup
 ```
 
+## Key Rotation
+
+To maintain security, it's recommended to periodically rotate encryption keys. The Secrets Manager provides a key rotation feature that allows you to rotate keys for a specific vault and optionally re-encrypt existing secrets with the new keys.
+
+### Rotating Keys
+
+To rotate keys for a vault without re-encrypting secrets:
+```bash
+php ./vendor/bin/secrets-manager key:rotate my_vault
+```
+
+To rotate keys and re-encrypt specific secrets:
+```bash
+php ./vendor/bin/secrets-manager key:rotate my_vault --secrets=secret1 --secrets=secret2
+```
+
+To rotate keys and re-encrypt all secrets:
+```bash
+php ./vendor/bin/secrets-manager key:rotate my_vault --all-secrets
+```
+
 ### Best Security Practices
 
 The key ring and the checksum should not be stored on the same server. The checksum does not prevent an attacker from gaining access to the key ring or manipulating it, since decrypting the key ring with the master keys is all that is required. However, the app tests the key ring against the checksum and if it does not match, it will not load it. You will know if the key ring has been tampered with.

@@ -6,14 +6,22 @@ namespace ParadiseSecurity\Component\SecretsManager\Key;
 
 use ParagonIE\HiddenString\HiddenString;
 
-final class Key implements KeyInterface
+/**
+ * Immutable cryptographic key value object.
+ */
+readonly final class Key implements KeyInterface
 {
+    private KeyType $type;
+
     public function __construct(
         private HiddenString $hex,
-        private string $type,
+        KeyType|string $type,
         private string $adapter,
         private string $version,
     ) {
+        if (is_string($type)) {
+            $this->type = KeyType::fromString($type);
+        }
     }
 
     public function getHex(): HiddenString
@@ -23,7 +31,7 @@ final class Key implements KeyInterface
 
     public function getType(): string
     {
-        return $this->type;
+        return $this->type->toString();
     }
 
     public function getAdapter(): string

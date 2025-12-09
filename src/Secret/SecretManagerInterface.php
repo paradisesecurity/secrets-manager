@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace ParadiseSecurity\Component\SecretsManager\Secret;
 
+use ParadiseSecurity\Component\SecretsManager\Adapter\Vault\VaultAdapterInterface;
+
 interface SecretManagerInterface
 {
     public function newVault(string $vault): void;
@@ -27,4 +29,6 @@ interface SecretManagerInterface
     public function options(array $options): self;
 
     public function getVaultAdapter(): VaultAdapterInterface;
+
+    public function rotateSecrets(string $vault, array $secretKeys = []): bool;
 }

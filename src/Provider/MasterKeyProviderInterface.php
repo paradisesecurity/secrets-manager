@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace ParadiseSecurity\Component\SecretsManager\Provider;
 
 use ParadiseSecurity\Component\SecretsManager\Key\KeyInterface;
-use ParadiseSecurity\Component\SecretsManager\Key\KeyManagerInterface;
 
 interface MasterKeyProviderInterface
 {
@@ -19,17 +18,15 @@ interface MasterKeyProviderInterface
 
     public const MASTER_ASYMMETRIC_SIGNATURE_PUBLIC_KEY = 'master_asymmetric_signature_public_key';
 
-    public function setAccessor(KeyManagerInterface $keyManager, MasterKeyProviderInterface $keyProvider): void;
+    public function getKeys(): array;
 
-    public function getKeys(string $accessor): array;
-
-    public function getEncryptionKey(string $accessor): ?KeyInterface;
+    public function getEncryptionKey(): KeyInterface;
 
     public function hasSignatureKeyPair(): bool;
 
-    public function getSignatureKeyPair(string $accessor): ?KeyInterface;
+    public function getSignatureKeyPair(): KeyInterface;
 
-    public function getSignatureSecretKey(string $accessor): ?KeyInterface;
+    public function getSignatureSecretKey(): KeyInterface;
 
-    public function getSignaturePublicKey(string $accessor): ?KeyInterface;
+    public function getSignaturePublicKey(): KeyInterface;
 }

@@ -11,6 +11,7 @@ use ParadiseSecurity\Component\SecretsManager\Key\KeyConfigInterface;
 use ParadiseSecurity\Component\SecretsManager\Key\KeyInterface;
 use ParadiseSecurity\Component\ServiceRegistry\Registry\ServiceRegistryInterface;
 use ParagonIE\HiddenString\HiddenString;
+use ParadiseSecurity\Component\SecretsManager\Adapter\KeyFactory\KeyFactoryAdapterInterface;
 
 final class KeyFactory implements KeyFactoryInterface
 {

@@ -7,38 +7,27 @@ namespace ParadiseSecurity\Component\SecretsManager\Storage;
 use ParadiseSecurity\Component\SecretsManager\Exception\FilesystemErrorException;
 use ParadiseSecurity\Component\SecretsManager\Exception\FilesystemNotFoundException;
 use ParadiseSecurity\Component\SecretsManager\Exception\UnableToLoadKeyException;
-use ParadiseSecurity\Component\SecretsManager\File\FilesystemAdapterInterface;
 use ParadiseSecurity\Component\SecretsManager\File\FilesystemManagerInterface;
-use ParadiseSecurity\Component\SecretsManager\Key\Key;
 use ParadiseSecurity\Component\SecretsManager\Key\KeyInterface;
-use ParagonIE\HiddenString\HiddenString;
-use Symfony\Component\Dotenv\Dotenv;
+use ParadiseSecurity\Component\SecretsManager\Storage\Env\EnvFileManager;
+use ParadiseSecurity\Component\SecretsManager\Storage\Serialization\KeySerializer;
 
-use function gettype;
-use function is_array;
-use function is_object;
-use function is_string;
-use function json_decode;
 use function json_encode;
-use function sprintf;
-use function strtoupper;
 
-use const PHP_EOL;
-
+/**
+ * Stores cryptographic keys in .env files.
+ * Uses JSON serialization for structured key data storage.
+ */
 final class EnvironmentBasedKeyStorage implements KeyStorageInterface
 {
-    private $dotenv;
-
-    private $envFileName;
-
     public const NAME = 'env';
 
     public function __construct(
         private FilesystemManagerInterface $filesystemManager,
-        string $envFileName = KeyStorageInterface::ENVIRONMENT_FILE_NAME
+        private EnvFileManager $envFileManager,
+        private KeySerializer $keySerializer,
+        private string $envFileName = KeyStorageInterface::ENVIRONMENT_FILE_NAME,
     ) {
-        $this->envFileName = $envFileName;
-        $this->dotenv = new Dotenv();
     }
 
     public function getName(): string
@@ -46,93 +35,117 @@ final class EnvironmentBasedKeyStorage implements KeyStorageInterface
         return self::NAME;
     }
 
+    /**
+     * Imports (loads) environment variables from the .env file.
+     */
     public function import(string $name): mixed
     {
-        $name = strtoupper($name);
-        if (isset($_ENV[$name])) {
+        // Check if already loaded
+        if ($this->envFileManager->has($name)) {
             return null;
         }
 
         try {
-            $filesystem = $this->filesystemManager->getFilesystem(FilesystemManagerInterface::ENVIRONMENT);
+            $filesystem = $this->filesystemManager->getFilesystem(
+                FilesystemManagerInterface::ENVIRONMENT
+            );
             $path = $filesystem->realpath($this->envFileName);
 
-            $this->dotenv->load($path);
+            $this->envFileManager->load($path);
             return null;
         } catch (\Exception $exception) {
-            throw new UnableToLoadKeyException('Unable to import environment key file.', $exception);
+            throw new UnableToLoadKeyException(
+                'Unable to import environment key file.',
+                $exception
+            );
         }
     }
 
+    /**
+     * Saves a key to the .env file.
+     */
     public function save(string $name, KeyInterface $key): void
     {
-        $name = strtoupper($name);
+        // Serialize key to JSON
+        $serializedKey = $this->keySerializer->serializeToJson($key);
 
-        $contents = [
-            'hex' => $key->getHex()->getString(),
-            'type' => $key->getType(),
-            'adapter' => $key->getAdapter(),
-            'version' => $key->getVersion(),
-        ];
-        $contents = json_encode($contents);
+        // Load existing environment variables
+        $existingEnv = $this->loadExistingEnv();
 
-        $env = [];
-        try {
-            $filesystem = $this->filesystemManager->getFilesystem(FilesystemManagerInterface::ENVIRONMENT, $this->envFileName);
-            $env = $this->getPreviousEnvironment($filesystem);
-        } catch (FilesystemNotFoundException $exception) {
-            $filesystem = $this->filesystemManager->getFilesystem(FilesystemManagerInterface::ENVIRONMENT);
-        }
-        $env[$name] = $contents;
+        // Merge with new key
+        $newEnvContent = $this->envFileManager->merge($existingEnv, $name, $serializedKey);
 
-        $newEnv = '';
-        foreach ($env as $index => $value) {
-            $newEnv = $newEnv . $index . "='" . $value . "'" . PHP_EOL;
-        }
-
-        try {
-            $filesystem->save($this->envFileName, $newEnv);
-        } catch (FilesystemErrorException $exception) {
-            throw new UnableToLoadKeyException('Unable to save env file.', $exception);
-        }
+        // Write to filesystem
+        $this->writeEnvFile($newEnvContent);
     }
 
-    public function resolve(string $contents): KeyInterface
+    /**
+     * Resolves an environment variable name into a Key object.
+     */
+    public function resolve(string $name): KeyInterface
     {
-        $name = strtoupper($contents);
-        if (!isset($_ENV[$name])) {
-            throw new UnableToLoadKeyException('Unable to resolve env variable into key.');
+        $value = $this->envFileManager->get($name);
+
+        if ($value === null) {
+            throw new UnableToLoadKeyException(
+                "Environment variable '{$name}' not found."
+            );
         }
 
-        $contents = $_ENV[$name];
-
-        if (is_string($contents)) {
-            $contents = json_decode($contents, true);
-        }
-
-        if (is_object($contents)) {
-            $contents = (array) $contents;
-        }
-
-        if (!is_array($contents)) {
-            throw new UnableToLoadKeyException(sprintf('Unable to resolve environment variable of type "%s".', gettype($contents)));
-        }
-
-        $hex = $contents['hex'];
-        $type = $contents['type'];
-        $adapter = $contents['adapter'];
-        $version = $contents['version'];
-
-        return new Key(new HiddenString($hex), $type, $adapter, $version);
-    }
-
-    private function getPreviousEnvironment(FilesystemAdapterInterface $filesystem): array
-    {
         try {
-            $data = $filesystem->read($this->envFileName);
-            return $this->dotenv->parse($data);
+            // Normalize to array format
+            $data = $this->keySerializer->normalizeToArray($value);
+            
+            // Deserialize from JSON
+            return $this->keySerializer->deserializeFromJson(json_encode($data));
         } catch (\Exception $exception) {
-            throw new UnableToLoadKeyException('Unable to load previous env file.', $exception);
+            throw new UnableToLoadKeyException(
+                "Unable to resolve environment variable '{$name}' into key.",
+                $exception
+            );
+        }
+    }
+
+    /**
+     * Loads existing environment variables from the .env file.
+     */
+    private function loadExistingEnv(): array
+    {
+        try {
+            $filesystem = $this->filesystemManager->getFilesystem(
+                FilesystemManagerInterface::ENVIRONMENT,
+                $this->envFileName
+            );
+            
+            $content = $filesystem->read($this->envFileName);
+            return $this->envFileManager->parse($content);
+        } catch (FilesystemNotFoundException) {
+            // File doesn't exist yet, return empty array
+            return [];
+        } catch (\Exception $exception) {
+            throw new UnableToLoadKeyException(
+                'Unable to load previous environment file.',
+                $exception
+            );
+        }
+    }
+
+    /**
+     * Writes environment content to the .env file.
+     */
+    private function writeEnvFile(string $content): void
+    {
+        try {
+            $filesystem = $this->filesystemManager->getFilesystem(
+                FilesystemManagerInterface::ENVIRONMENT
+            );
+            
+            $filesystem->save($this->envFileName, $content);
+        } catch (FilesystemErrorException $exception) {
+            throw new UnableToLoadKeyException(
+                'Unable to save environment file.',
+                $exception
+            );
         }
     }
 }

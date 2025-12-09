@@ -6,7 +6,7 @@ namespace ParadiseSecurity\Component\SecretsManager\Exception;
 
 class SecretNotFoundException extends \Exception
 {
-    public function __construct(?string $message = null, \Exception $previousException = null)
+    public function __construct(?string $message = null, ?\Exception $previousException = null)
     {
         parent::__construct($message ?: 'Secret not found.', 0, $previousException);
     }

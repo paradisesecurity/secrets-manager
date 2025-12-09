@@ -10,7 +10,7 @@ interface UtilityInterface
 
     public static function tempFile(string $prefix = 'secret-', string $dir = ''): string;
 
-    public static function subString(string $str, int $start, int $length = null): string;
+    public static function subString(string $str, int $start, ?int $length = null): string;
 
     public static function stringLength(string $str): int;
 }

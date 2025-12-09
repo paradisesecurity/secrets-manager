@@ -6,7 +6,7 @@ namespace ParadiseSecurity\Component\SecretsManager\Exception;
 
 class ValueNotSupportedException extends \Exception
 {
-    public function __construct(?string $message = null, \Exception $previousException = null)
+    public function __construct(?string $message = null, ?\Exception $previousException = null)
     {
         parent::__construct($message ?: 'Unsupported value.', 0, $previousException);
     }

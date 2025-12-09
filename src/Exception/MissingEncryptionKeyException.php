@@ -6,7 +6,7 @@ namespace ParadiseSecurity\Component\SecretsManager\Exception;
 
 class MissingEncryptionKeyException extends \Exception
 {
-    public function __construct(?string $message = null, \Exception $previousException = null)
+    public function __construct(?string $message = null, ?\Exception $previousException = null)
     {
         parent::__construct($message ?: 'An encryption key is required but wasn\'t provided.', 0, $previousException);
     }

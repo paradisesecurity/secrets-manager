@@ -4,52 +4,35 @@ declare(strict_types=1);
 
 namespace ParadiseSecurity\Component\SecretsManager\Key;
 
-use ParadiseSecurity\Component\SecretsManager\Encryption\EncryptionAdapterInterface;
-use ParadiseSecurity\Component\SecretsManager\Encryption\EncryptionRequestInterface;
-use ParadiseSecurity\Component\SecretsManager\Encryption\FileEncryptionRequest;
-use ParadiseSecurity\Component\SecretsManager\Encryption\MessageEncryptionRequest;
-use ParadiseSecurity\Component\SecretsManager\Exception\FilesystemErrorException;
-use ParadiseSecurity\Component\SecretsManager\Exception\FilesystemNotFoundException;
-use ParadiseSecurity\Component\SecretsManager\Exception\InvalidSignatureOrChecksumException;
+use ParadiseSecurity\Component\SecretsManager\Adapter\Encryption\EncryptionAdapterInterface;
+use ParadiseSecurity\Component\SecretsManager\Exception\InvalidAuthenticationKeyException;
 use ParadiseSecurity\Component\SecretsManager\Exception\UnableToAccessKeyringException;
-use ParadiseSecurity\Component\SecretsManager\Exception\UnableToEncryptMessageException;
-use ParadiseSecurity\Component\SecretsManager\Exception\UnableToGenerateSignatureOrChecksumException;
+use ParadiseSecurity\Component\SecretsManager\Exception\KeyringNotFoundException;
 use ParadiseSecurity\Component\SecretsManager\Factory\KeyFactoryInterface;
-use ParadiseSecurity\Component\SecretsManager\File\Checksum;
-use ParadiseSecurity\Component\SecretsManager\File\ChecksumInterface;
-use ParadiseSecurity\Component\SecretsManager\File\FilesystemAdapterInterface;
-use ParadiseSecurity\Component\SecretsManager\File\FilesystemManagerInterface;
 use ParadiseSecurity\Component\SecretsManager\Provider\MasterKeyProviderInterface;
 use ParagonIE\HiddenString\HiddenString;
 
-use function is_null;
-use function json_decode;
-use function json_encode;
+use ParadiseSecurity\Component\SecretsManager\Key\Encryption\KeyringEncryption;
+use ParadiseSecurity\Component\SecretsManager\Key\Integrity\KeyringIntegrityVerifier;
+use ParadiseSecurity\Component\SecretsManager\Key\IO\KeyringIO;
+use ParadiseSecurity\Component\SecretsManager\Key\Serialization\KeyringSerializer;
 
-use const JSON_PRETTY_PRINT;
+use function is_null;
 
 final class KeyManager implements KeyManagerInterface
 {
-    private string $accessor;
-
     private KeyringInterface|null $keyring = null;
 
     public function __construct(
-        private FilesystemManagerInterface $filesystemManager,
         private MasterKeyProviderInterface $masterKeyProvider,
         private EncryptionAdapterInterface $encryptionAdapter,
         private KeyFactoryInterface $keyFactory,
-        private string $keyringName = KeyManagerInterface::KEYRING_NAME
-    ) {
-        $this->masterKeyProvider->setAccessor($this, $this->masterKeyProvider);
-    }
-
-    public function setAccessor(MasterKeyProviderInterface $keyProvider, KeyManagerInterface $keyManager, string $accessor)
-    {
-        if ($keyManager === $this && $keyProvider === $this->masterKeyProvider) {
-            $this->accessor = $accessor;
-        }
-    }
+        private KeyringEncryption $keyringEncryption,
+        private KeyringIntegrityVerifier $integrityVerifier,
+        private KeyringSerializer $keyringSerializer,
+        private KeyringIO $keyringIO,
+        private string $keyringName = KeyManagerInterface::KEYRING_NAME,
+    ) { }
 
     public function flushVault(string $vault): void
     {
@@ -78,7 +61,7 @@ final class KeyManager implements KeyManagerInterface
         return $this->keyring->hasVault($vault);
     }
 
-    public function generateKey(KeyConfigInterface $config, string $adapter = null): ?KeyInterface
+    public function generateKey(KeyConfigInterface $config, ?string $adapter = null): ?KeyInterface
     {
         if (is_null($adapter)) {
             $adapter = $this->encryptionAdapter->getName();
@@ -130,8 +113,7 @@ final class KeyManager implements KeyManagerInterface
         }
 
         if ($this->keyring instanceof KeyringInterface) {
-            $uniqueId = $this->keyring->getUniqueId();
-            $mac = $this->generateMAC($authKey, $uniqueId);
+            $mac = $this->keyringEncryption->generateMAC($authKey, $this->keyring->getUniqueId());
             $this->keyring->addAuth($mac);
         }
 
@@ -150,7 +132,7 @@ final class KeyManager implements KeyManagerInterface
         return $key;
     }
 
-    public function newKeyring(KeyInterface $authKey = null): ?KeyInterface
+    public function newKeyring(?KeyInterface $authKey = null): ?KeyInterface
     {
         $this->keyring = new Keyring();
 
@@ -161,253 +143,191 @@ final class KeyManager implements KeyManagerInterface
         return $this->newAuth();
     }
 
-    private function generateMAC(KeyInterface $authKey, string $uniqueId): string
-    {
-        $request = new MessageEncryptionRequest(new HiddenString($uniqueId), $authKey);
-
-        return $this->encryptionAdapter->authenticate($request);
-    }
-
     public function lockKeyring(KeyInterface $authKey): void
     {
-        if (!$this->keyring->isLocked()) {
-            $uniqueId = $this->keyring->getUniqueId();
-            $mac = $this->getAccessMac($authKey, $uniqueId);
-            $this->keyring->lock($mac);
+        if ($this->keyring->isLocked()) {
+            return;
         }
+
+        $mac = $this->keyringEncryption->generateMAC($authKey, $this->keyring->getUniqueId());
+
+        if (!$this->keyringEncryption->verifyMAC($authKey, $mac, $this->keyring->getUniqueId())) {
+            throw new InvalidAuthenticationKeyException('Invalid authentication key for this keyring.');
+        }
+
+        $this->keyring->lock($mac);
+
     }
 
     public function unlockKeyring(KeyInterface $authKey): void
     {
-        if ($this->keyring->isLocked()) {
-            $uniqueId = $this->keyring->getUniqueId();
-            $mac = $this->getAccessMac($authKey, $uniqueId);
-            $this->keyring->unlock($mac);
-        }
-    }
-
-    private function getAccessMac(KeyInterface $authKey, string $uniqueId): string
-    {
-        $mac = $this->generateMAC($authKey, $uniqueId);
-
-        if ($this->verifyAccess($authKey, $mac, $uniqueId) === false) {
-            return '';
+        if (!$this->keyring->isLocked()) {
+            return;
         }
 
-        return $mac;
-    }
+        $mac = $this->keyringEncryption->generateMAC($authKey, $this->keyring->getUniqueId());
 
-    private function verifyAccess(KeyInterface $authKey, string $mac, string $uniqueId): bool
-    {
-        $request = new MessageEncryptionRequest(new HiddenString($uniqueId), $authKey, [EncryptionRequestInterface::MAC => $mac]);
+        if (!$this->keyringEncryption->verifyMAC($authKey, $mac, $this->keyring->getUniqueId())) {
+            throw new InvalidAuthenticationKeyException('Invalid authentication key for this keyring.');
+        }
 
-        return $this->encryptionAdapter->verify($request);
+        $this->keyring->unlock($mac);
     }
 
     public function doesKeyringExist(): bool
     {
-        try {
-            $adapter = $this->getKeyringFilesystem();
-        } catch (FilesystemNotFoundException $exception) {
-            return false;
-        }
-
-        return ($adapter instanceof FilesystemAdapterInterface);
+        return $this->keyringIO->keyringExists();
     }
 
+    /**
+     * Loads and verifies the keyring from storage.
+     *
+     * This method performs the following steps:
+     * 1. Validates that no keyring is already loaded
+     * 2. Validates the authentication key type
+     * 3. Verifies the keyring file exists
+     * 4. Sets the authentication key
+     * 5. Retrieves master encryption and signature keys
+     * 6. Verifies file integrity (checksum and signature)
+     * 7. Decrypts the keyring data
+     * 8. Deserializes the keyring into a Keyring object
+     * 9. Verifies the keyring's internal MAC with the auth key
+     *
+     * @param KeyInterface $authKey The authentication key used to verify keyring ownership
+     * @throws KeyringAlreadyLoadedException If a keyring is already loaded
+     * @throws InvalidAuthenticationKeyException If the auth key is invalid or wrong type
+     * @throws KeyringNotFoundException If the keyring file doesn't exist
+     * @throws KeyringIntegrityException If checksum or signature verification fails
+     */
     public function loadKeyring(KeyInterface $authKey): void
     {
-        if (($this->keyring instanceof KeyringInterface)) {
-            return;
+        // Step 1: Check if keyring is already loaded
+        if ($this->keyring instanceof KeyringInterface) {
+            throw new KeyringAlreadyLoadedException('The keyring is already loaded.');
         }
 
-        if ($this->doesKeyringExist() === false) {
-            throw new UnableToAccessKeyringException('Keyring does not exist. Note: Create a new keyring first.');
+        // Step 2: Validate authentication key type
+        if ($authKey->getType() !== KeyFactoryInterface::SYMMETRIC_AUTHENTICATION_KEY) {
+            throw new InvalidAuthenticationKeyException('The provided authentication key is not a symmetric authentication key.');
         }
 
-        $storedChecksum = $this->readChecksum();
-        $fileChecksum = new Checksum($storedChecksum);
-
-        $filesystem = $this->getKeyringFilesystem();
-
-        $readOnly = $this->openReadOnlyKeyring($filesystem);
-
-        $checksum = $this->generateChecksum($readOnly);
-
-        if (!$this->verifyChecksum($checksum, $fileChecksum)) {
-            throw new InvalidSignatureOrChecksumException('Invalid checksum.');
+        // Step 3: Verify keyring file exists
+        if (!$this->keyringIO->keyringExists()) {
+            throw new KeyringNotFoundException(sprintf('The keyring "%s" does not exist. You must create it first.', $this->keyringName));
         }
 
-        if (!$this->verifySignature($readOnly, $fileChecksum)) {
-            throw new InvalidSignatureOrChecksumException('Invalid signature.');
-        }
+        // Step 4: Set the authentication key for this session
+        //$this->authKey = $authKey; Is this needed?
 
+        // Step 5: Retrieve master keys (encryption key and signature public key)
+        $encryptionKey = $this->masterKeyProvider->getEncryptionKey();
+        $signaturePublicKey = $this->masterKeyProvider->getSignaturePublicKey();
+        $signaturePublicKey = $this->checkSignatureKeyPair($signaturePublicKey);
+
+        // Step 6: Verify file integrity (checksum and signature)
+        $keyringStream = $this->keyringIO->openKeyringForReading();
         try {
-            $encryptedData = $filesystem->read($this->getKeyringPath());
-        } catch (FilesystemErrorException $exception) {
-            throw new UnableToAccessKeyringException('Unable to read the contents of the keyring', $exception);
+            // Read the checksum file contents
+            $checksumContents = $this->keyringIO->readChecksumData();
+            
+            // Parse the stored checksum and signature from the checksum file
+            $storedChecksum = $this->integrityVerifier->parseChecksumFile($checksumContents);
+
+            // Calculate the actual checksum of the keyring file
+            $calculatedChecksum = $this->integrityVerifier->generateChecksum($keyringStream);
+
+            // Verify the checksum matches (file hasn't been corrupted)
+            if (!$this->integrityVerifier->verifyChecksum($calculatedChecksum, $storedChecksum)) {
+                throw new KeyringIntegrityException('Keyring checksum verification failed. The file may be corrupt.');
+            }
+
+            // Verify the signature (file hasn't been tampered with)
+            if (!$this->integrityVerifier->verifySignature($keyringStream, $storedChecksum, $signaturePublicKey)) {
+                throw new KeyringIntegrityException('Keyring signature verification failed. The file may have been tampered with.');
+            }
+        } finally {
+            // Always close the stream, even if an exception occurred
+            if (is_resource($keyringStream)) {
+                fclose($keyringStream);
+            }
         }
 
-        $decryptedData = $this->decryptEncryptedData($encryptedData);
+        // Step 7: Decrypt the keyring data
+        $encryptedData = $this->keyringIO->readKeyringData();
+        $decryptedJson = $this->keyringEncryption->decrypt($encryptedData, $encryptionKey);
 
-        $keyring = $this->unserializeDecryptedData($decryptedData);
+        // Step 8: Deserialize JSON into a Keyring object
+        $keyring = $this->keyringSerializer->deserialize($decryptedJson);
 
-        if (!($keyring instanceof KeyringInterface)) {
-            return;
+        // Step 9: Verify the keyring's internal MAC with the authentication key
+        // This ensures the authentication key matches the one used to create the keyring
+        $mac = $this->keyringEncryption->generateMAC($authKey, $keyring->getUniqueId());
+
+        // Each Encryption Adapter might have a unique way of verifying MAC
+        if (!$this->keyringEncryption->verifyMAC($authKey, $mac, $keyring->getUniqueId())) {
+            throw new InvalidAuthenticationKeyException('Invalid authentication key for this keyring.');
         }
 
-        $uniqueId = $keyring->getUniqueId();
-        $mac = $this->getAccessMac($authKey, $uniqueId);
+        // MAC must be in the list of authorized MACs on the keyring
+        // This allows revoking access to MACs
         if ($keyring->hasAccess($mac)) {
             $this->keyring = $keyring;
         }
     }
 
+    /**
+     * Saves the keyring to storage with encryption and integrity protection.
+     *
+     * This method performs the following steps:
+     * 1. Locks the keyring if it's not already locked
+     * 2. Serializes the keyring to JSON
+     * 3. Encrypts the serialized data
+     * 4. Writes the encrypted data to disk
+     * 5. Generates and saves checksum and signature for integrity verification
+     *
+     * @param KeyInterface $authKey The authentication key used to lock the keyring
+     * @throws UnableToAccessKeyringException If encryption or file operations fail
+     * @throws UnableToSecureKeyringException If checksum/signature generation fails
+     */
     public function saveKeyring(KeyInterface $authKey): void
     {
+        // Step 1: Lock the keyring if it's not already locked
         if ($this->keyring->isLocked() === false) {
             $this->lockKeyring($authKey);
         }
 
-        $serializedData = $this->serializeKeyring($this->keyring);
+        // Step 2: Serialize the keyring to JSON
+        $serializedData = $this->keyringSerializer->serialize($this->keyring);
 
-        $encryptedData = $this->encryptSerializedData($serializedData);
+        // Step 3: Encrypt the serialized data
+        $encryptionKey = $this->masterKeyProvider->getEncryptionKey();
+        $encryptedData = $this->keyringEncryption->encrypt($serializedData, $encryptionKey);
 
-        $filesystem = $this->getKeyringFilesystem(true);
+        // Step 4: Write the encrypted data to the keyring file
+        $this->keyringIO->writeKeyringData($encryptedData);
 
+        // Step 5: Generate checksum and signature for integrity verification
+        $keyringStream = $this->keyringIO->openKeyringForReading();
         try {
-            $filesystem->save($this->getKeyringPath(), $encryptedData);
-        } catch (FilesystemErrorException $exception) {
-            throw new UnableToSecureKeyringException('Unable to write the encrypted contents to the keyring.', $exception);
+            // Generate checksum of the encrypted keyring file
+            $checksum = $this->integrityVerifier->generateChecksum($keyringStream);
+
+            // Generate signature using the master signature key
+            $signatureSecretKey = $this->masterKeyProvider->getSignatureSecretKey();
+            $signatureSecretKey = $this->checkSignatureKeyPair($signatureSecretKey);
+            $signature = $this->integrityVerifier->generateSignature($keyringStream, $signatureSecretKey);
+
+            // Combine checksum and signature into the checksum file format
+            $checksumFileContent = $this->integrityVerifier->createChecksumFile($checksum, $signature);
+
+            // Write the checksum file
+            $this->keyringIO->writeChecksumData($checksumFileContent);
+        } finally {
+            // Always close the stream, even if an exception occurred
+            if (is_resource($keyringStream)) {
+                fclose($keyringStream);
+            }
         }
-
-        $readOnly = $this->openReadOnlyKeyring($filesystem);
-
-        $checksum = $this->generateChecksum($readOnly);
-        $signature = $this->generateSignature($readOnly);
-
-        $this->saveChecksum($checksum . $signature);
-    }
-
-    private function saveChecksum(string $checksum): void
-    {
-        $filesystem = $this->getChecksumFilesystem(true);
-
-        try {
-            $filesystem->save($this->getChecksumPath(), $checksum);
-        } catch (FilesystemErrorException $exception) {
-            throw new UnableToSecureKeyringException('Unable to save the checksum data.', $exception);
-        }
-    }
-
-    private function serializeKeyring(KeyringInterface $keyring): string
-    {
-        return json_encode($keyring, JSON_PRETTY_PRINT);
-    }
-
-    private function unserializeDecryptedData(HiddenString $decryptedData): mixed
-    {
-        $serializedData = $decryptedData->getString();
-
-        try {
-            $data = json_decode($serializedData, true);
-            $keyring = new Keyring();
-            $keyring = $keyring->withSecuredData(
-                $data['uniqueId'],
-                $data['vault'],
-                $data['macs']
-            );
-        } catch (\Exception $exception) {
-            $keyring = false;
-        }
-
-        if ($keyring === false) {
-            throw new UnableToAccessKeyringException('Could not unserialize the keyring.');
-        }
-
-        return $keyring;
-    }
-
-    private function encryptSerializedData(string $serializedData): string
-    {
-        $encryptionKey = $this->masterKeyProvider->getEncryptionKey($this->accessor);
-
-        $request = new MessageEncryptionRequest(new HiddenString($serializedData), $encryptionKey);
-
-        try {
-            return $this->encryptionAdapter->encrypt($request);
-        } catch (UnableToEncryptMessageException $exception) {
-            throw new UnableToAccessKeyringException('Could not encrypt the keyring.', $exception);
-        }
-    }
-
-    private function decryptEncryptedData(string $encryptedData): HiddenString
-    {
-        $encryptionKey = $this->masterKeyProvider->getEncryptionKey($this->accessor);
-
-        $request = new MessageEncryptionRequest(new HiddenString($encryptedData), $encryptionKey);
-
-        try {
-            return $this->encryptionAdapter->decrypt($request);
-        } catch (UnableToEncryptMessageException $exception) {
-            throw new UnableToAccessKeyringException('Could not decrypt the keyring.', $exception);
-        }
-    }
-
-    private function openReadOnlyKeyring(FilesystemAdapterInterface $filesystem): mixed
-    {
-        try {
-            return $filesystem->open($this->getKeyringPath());
-        } catch (FilesystemErrorException $exception) {
-            throw new UnableToAccessKeyringException('Unable to open the keyring for read only access.', $exception);
-        }
-    }
-
-    private function generateSignature(mixed $readOnly): string
-    {
-        $secretKey = $this->masterKeyProvider->getSignatureSecretKey($this->accessor);
-        $secretKey = $this->checkSignatureKeyPair($secretKey);
-
-        $config = [
-            EncryptionRequestInterface::ASYMMETRIC => true,
-        ];
-        $request = new FileEncryptionRequest($readOnly, null, $secretKey, $config);
-
-        try {
-            return $this->encryptionAdapter->sign($request);
-        } catch (UnableToEncryptMessageException $exception) {
-            throw new UnableToGenerateSignatureOrChecksumException('Unable to generate signature.', $exception);
-        }
-    }
-
-    private function generateChecksum(mixed $readOnly): string
-    {
-        $request = new FileEncryptionRequest($readOnly, null, []);
-
-        try {
-            return $this->encryptionAdapter->checksum($request);
-        } catch (UnableToEncryptMessageException $exception) {
-            throw new UnableToGenerateSignatureOrChecksumException('Unable to generate checksum.', $exception);
-        }
-    }
-
-    private function verifyChecksum(string $checksum, ChecksumInterface $fileChecksum): bool
-    {
-        return ($checksum === $fileChecksum->getChecksum());
-    }
-
-    private function verifySignature(mixed $readOnly, ChecksumInterface $fileChecksum): bool
-    {
-        $publicKey = $this->masterKeyProvider->getSignaturePublicKey($this->accessor);
-        $publicKey = $this->checkSignatureKeyPair($publicKey);
-
-        $config = [
-            EncryptionRequestInterface::ASYMMETRIC => true,
-            EncryptionRequestInterface::SIGNATURE => $fileChecksum->getSignature(),
-        ];
-        $request = new FileEncryptionRequest($readOnly, null, [$publicKey], $config);
-
-        return $this->encryptionAdapter->verify($request);
     }
 
     private function checkSignatureKeyPair(?KeyInterface $key): ?KeyInterface
@@ -416,7 +336,7 @@ final class KeyManager implements KeyManagerInterface
             return $key;
         }
 
-        $keyPair = $this->masterKeyProvider->getSignatureKeyPair($this->accessor);
+        $keyPair = $this->masterKeyProvider->getSignatureKeyPair();
 
         if (is_null($key) && !is_null($keyPair)) {
             return $keyPair;
@@ -425,46 +345,53 @@ final class KeyManager implements KeyManagerInterface
         return $key;
     }
 
-    private function readChecksum(): string
+    public function rotateKeys(string $vault, array $keyNames = []): bool
     {
-        $filesystem = $this->getChecksumFilesystem();
-
-        try {
-            return $filesystem->read($this->getChecksumPath());
-        } catch (FilesystemErrorException $exception) {
-            throw new UnableToAccessKeyringException('Checksum could not be read.', $exception);
+        // Unlock the keyring to allow modifications
+        // Note: The caller should handle unlocking with appropriate auth key
+        if ($this->keyring->isLocked()) {
+            return false;
         }
-    }
 
-    private function getKeyringFilesystem($default = false): FilesystemAdapterInterface
-    {
-        $name = FilesystemManagerInterface::KEYRING;
-        if ($default) {
-            return $this->filesystemManager->getFilesystem($name);
+        // If no specific keys are provided, we need to get all key names in the vault
+        if (empty($keyNames)) {
+            // We'll rotate the main KMS key which is used for encrypting data keys
+            $keyNames = ['kms_key'];
         }
-        return $this->filesystemManager->getFilesystem($name, $this->getKeyringPath());
-    }
 
-    private function getChecksumFilesystem($default = false): FilesystemAdapterInterface
-    {
-        $name = FilesystemManagerInterface::CHECKSUM;
-        if ($default) {
-            return $this->filesystemManager->getFilesystem($name);
+        $rotatedKeys = [];
+        $oldKeys = [];
+
+        // Generate new keys for each specified key name
+        foreach ($keyNames as $keyName) {
+            $oldKey = $this->keyring->getKey($vault, $keyName);
+            if ($oldKey === null) {
+                continue;
+            }
+
+            // Store the old key for potential rollback
+            $oldKeys[$keyName] = $oldKey;
+
+            // Generate a new key with the same configuration as the old key
+            $config = new KeyConfig($oldKey->getType());
+            $newKey = $this->generateKey($config, $oldKey->getAdapter());
+
+            if ($newKey !== null) {
+                $rotatedKeys[$keyName] = $newKey;
+            } else {
+                // If we can't generate a new key, rollback previous rotations
+                foreach ($rotatedKeys as $name => $key) {
+                    $this->keyring->addKey($vault, $name, $oldKeys[$name]);
+                }
+                return false;
+            }
         }
-        return $this->filesystemManager->getFilesystem($name, $this->getChecksumPath());
-    }
 
-    private function getChecksumPath(): string
-    {
-        return $this->filesystemManager->getPath(
-            $this->keyringName . KeyManagerInterface::CHECKSUM_EXTENSION
-        );
-    }
+        // Add all new keys to the keyring
+        foreach ($rotatedKeys as $keyName => $newKey) {
+            $this->keyring->addKey($vault, $keyName, $newKey);
+        }
 
-    private function getKeyringPath(): string
-    {
-        return $this->filesystemManager->getPath(
-            $this->keyringName . KeyManagerInterface::KEYRING_EXTENSION
-        );
+        return true;
     }
 }
