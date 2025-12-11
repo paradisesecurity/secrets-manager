@@ -5,8 +5,7 @@ declare(strict_types=1);
 namespace ParadiseSecurity\Component\SecretsManager\Secret\Authentication;
 
 use ParadiseSecurity\Component\SecretsManager\Adapter\Encryption\EncryptionAdapterInterface;
-use ParadiseSecurity\Component\SecretsManager\Encryption\EncryptionRequestInterface;
-use ParadiseSecurity\Component\SecretsManager\Encryption\MessageEncryptionRequest;
+use ParadiseSecurity\Component\SecretsManager\Encryption\Request\Builder\EncryptionRequestBuilder;
 use ParadiseSecurity\Component\SecretsManager\Exception\SecretAuthenticationException;
 use ParadiseSecurity\Component\SecretsManager\Exception\SecretNotFoundException;
 use ParadiseSecurity\Component\SecretsManager\Key\KeyInterface;
@@ -30,15 +29,10 @@ final class SecretAuthentication
      */
     public function authenticateData(string $value, KeyInterface $authKey): string
     {
-        $config = [
-            EncryptionRequestInterface::CHOOSE_ENCODER => true,
-        ];
-
-        $request = new MessageEncryptionRequest(
-            new HiddenString($value),
-            $authKey,
-            $config
-        );
+        $request = EncryptionRequestBuilder::create()
+            ->withKey($authKey)
+            ->withEncoderChoice(true)
+            ->buildForMessage(new HiddenString($value));
 
         try {
             $mac = $this->encryptionAdapter->authenticate($request);
@@ -59,16 +53,11 @@ final class SecretAuthentication
         $mac = Utility::subString($authenticatedData, 0, SODIUM_CRYPTO_GENERICHASH_BYTES_MAX);
         $data = Utility::subString($authenticatedData, SODIUM_CRYPTO_GENERICHASH_BYTES_MAX);
 
-        $config = [
-            EncryptionRequestInterface::MAC => $mac,
-            EncryptionRequestInterface::CHOOSE_ENCODER => true,
-        ];
-
-        $request = new MessageEncryptionRequest(
-            new HiddenString($data),
-            $authKey,
-            $config
-        );
+        $request = EncryptionRequestBuilder::create()
+            ->withKey($authKey)
+            ->withEncoderChoice(true)
+            ->withMac($mac)
+            ->buildForMessage(new HiddenString($data));
 
         if (!$this->encryptionAdapter->verify($request)) {
             throw new SecretNotFoundException('Secret data could not be verified.');

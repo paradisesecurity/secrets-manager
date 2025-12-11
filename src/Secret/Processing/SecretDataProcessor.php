@@ -5,8 +5,7 @@ declare(strict_types=1);
 namespace ParadiseSecurity\Component\SecretsManager\Secret\Processing;
 
 use ParadiseSecurity\Component\SecretsManager\Adapter\Encryption\EncryptionAdapterInterface;
-use ParadiseSecurity\Component\SecretsManager\Encryption\EncryptionRequestInterface;
-use ParadiseSecurity\Component\SecretsManager\Encryption\MessageEncryptionRequest;
+use ParadiseSecurity\Component\SecretsManager\Encryption\Request\Builder\EncryptionRequestBuilder;
 use ParadiseSecurity\Component\SecretsManager\Exception\SecretProcessingException;
 use ParadiseSecurity\Component\SecretsManager\Factory\KeyFactoryInterface;
 use ParadiseSecurity\Component\SecretsManager\Key\KeyInterface;
@@ -45,10 +44,9 @@ final class SecretDataProcessor
         }
 
         // Encrypt
-        $request = new MessageEncryptionRequest(
-            new HiddenString($jsonValue),
-            $dataKey
-        );
+        $request = EncryptionRequestBuilder::create()
+            ->withKey($dataKey)
+            ->buildForMessage(new HiddenString($jsonValue));
         
         try {
             return $this->encryptionAdapter->encrypt($request);
@@ -63,11 +61,10 @@ final class SecretDataProcessor
     public function decryptValue(string $encryptedValue, KeyInterface $dataKey): mixed
     {
         // Decrypt
-        $request = new MessageEncryptionRequest(
-            new HiddenString($encryptedValue),
-            $dataKey
-        );
-        
+        $request = EncryptionRequestBuilder::create()
+            ->withKey($dataKey)
+            ->buildForMessage(new HiddenString($encryptedValue));
+
         try {
             $decrypted = $this->encryptionAdapter->decrypt($request)->getString();
         } catch (\Exception $e) {
@@ -90,13 +87,11 @@ final class SecretDataProcessor
 
     public function authenticateData(string $value, KeyInterface $authKey): string
     {
-        $config = [EncryptionRequestInterface::CHOOSE_ENCODER => true];
-        $request = new MessageEncryptionRequest(
-            new HiddenString($value),
-            $authKey,
-            $config
-        );
-        
+        $request = EncryptionRequestBuilder::create()
+            ->withKey($authKey)
+            ->withEncoderChoice(true)
+            ->buildForMessage(new HiddenString($value));
+
         try {
             $mac = $this->encryptionAdapter->authenticate($request);
             return $mac . $value;
@@ -113,16 +108,12 @@ final class SecretDataProcessor
         $mac = Utility::subString($authenticatedData, 0, SODIUM_CRYPTO_GENERICHASH_BYTES_MAX);
         $data = Utility::subString($authenticatedData, SODIUM_CRYPTO_GENERICHASH_BYTES_MAX);
 
-        $config = [
-            EncryptionRequestInterface::MAC => $mac,
-            EncryptionRequestInterface::CHOOSE_ENCODER => true,
-        ];
-        $request = new MessageEncryptionRequest(
-            new HiddenString($data),
-            $authKey,
-            $config
-        );
-        
+        $request = EncryptionRequestBuilder::create()
+            ->withKey($authKey)
+            ->withEncoderChoice(true)
+            ->withMac($mac)
+            ->buildForMessage(new HiddenString($data));
+
         if (!$this->encryptionAdapter->verify($request)) {
             throw new SecretProcessingException('Secret data authentication failed');
         }
@@ -148,11 +139,10 @@ final class SecretDataProcessor
             );
         }
 
-        $request = new MessageEncryptionRequest(
-            new HiddenString($jsonKey),
-            $kmsKey
-        );
-        
+        $request = EncryptionRequestBuilder::create()
+            ->withKey($kmsKey)
+            ->buildForMessage(new HiddenString($jsonKey));
+
         try {
             return $this->encryptionAdapter->encrypt($request);
         } catch (\Exception $e) {
@@ -165,10 +155,9 @@ final class SecretDataProcessor
 
     public function decryptDataKey(string $encryptedDataKey, KeyInterface $kmsKey): KeyInterface
     {
-        $request = new MessageEncryptionRequest(
-            new HiddenString($encryptedDataKey),
-            $kmsKey
-        );
+        $request = EncryptionRequestBuilder::create()
+            ->withKey($kmsKey)
+            ->buildForMessage(new HiddenString($encryptedDataKey));
         
         try {
             $decrypted = $this->encryptionAdapter->decrypt($request)->getString();

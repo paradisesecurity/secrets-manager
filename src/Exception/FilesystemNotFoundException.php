@@ -4,10 +4,26 @@ declare(strict_types=1);
 
 namespace ParadiseSecurity\Component\SecretsManager\Exception;
 
-class FilesystemNotFoundException extends \Exception
+class FilesystemNotFoundException extends \RuntimeException
 {
-    public function __construct(?string $message = null, ?\Exception $previousException = null)
+    public static function noAdapters(string $connection): self
     {
-        parent::__construct($message ?: 'Filesystem not found.', 0, $previousException);
+        return new self(
+            "No filesystem adapters registered for connection '{$connection}'."
+        );
+    }
+
+    public static function pathNotFound(string $path, string $connection): self
+    {
+        return new self(
+            "Path '{$path}' not found in any adapter for connection '{$connection}'."
+        );
+    }
+
+    public static function connectionNotFound(string $connection): self
+    {
+        return new self(
+            "Connection '{$connection}' does not exist."
+        );
     }
 }

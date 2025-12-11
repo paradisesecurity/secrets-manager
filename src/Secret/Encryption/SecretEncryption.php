@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace ParadiseSecurity\Component\SecretsManager\Secret\Encryption;
 
 use ParadiseSecurity\Component\SecretsManager\Adapter\Encryption\EncryptionAdapterInterface;
-use ParadiseSecurity\Component\SecretsManager\Encryption\MessageEncryptionRequest;
+use ParadiseSecurity\Component\SecretsManager\Encryption\Request\Builder\EncryptionRequestBuilder;
 use ParadiseSecurity\Component\SecretsManager\Exception\SecretEncryptionException;
 use ParadiseSecurity\Component\SecretsManager\Key\KeyInterface;
 use ParagonIE\HiddenString\HiddenString;
@@ -29,10 +29,9 @@ final class SecretEncryption
      */
     public function encryptValue(KeyInterface $dataKey, string $value): string
     {
-        $request = new MessageEncryptionRequest(
-            new HiddenString($value),
-            $dataKey
-        );
+        $request = EncryptionRequestBuilder::create()
+            ->withKey($dataKey)
+            ->buildForMessage(new HiddenString($value));
 
         try {
             return $this->encryptionAdapter->encrypt($request);
@@ -49,10 +48,9 @@ final class SecretEncryption
      */
     public function decryptValue(string $encryptedValue, KeyInterface $dataKey): string
     {
-        $request = new MessageEncryptionRequest(
-            new HiddenString($encryptedValue),
-            $dataKey
-        );
+        $request = EncryptionRequestBuilder::create()
+            ->withKey($dataKey)
+            ->buildForMessage(new HiddenString($encryptedValue));
 
         try {
             return $this->encryptionAdapter->decrypt($request)->getString();
@@ -88,10 +86,9 @@ final class SecretEncryption
             );
         }
 
-        $request = new MessageEncryptionRequest(
-            new HiddenString($serializedKey),
-            $kmsKey
-        );
+        $request = EncryptionRequestBuilder::create()
+            ->withKey($kmsKey)
+            ->buildForMessage(new HiddenString($serializedKey));
 
         try {
             return $this->encryptionAdapter->encrypt($request);
@@ -108,10 +105,9 @@ final class SecretEncryption
      */
     public function decryptDataKey(string $encryptedDataKey, KeyInterface $kmsKey): array
     {
-        $request = new MessageEncryptionRequest(
-            new HiddenString($encryptedDataKey),
-            $kmsKey
-        );
+        $request = EncryptionRequestBuilder::create()
+            ->withKey($kmsKey)
+            ->buildForMessage(new HiddenString($encryptedDataKey));
 
         try {
             $decryptedJson = $this->encryptionAdapter->decrypt($request)->getString();

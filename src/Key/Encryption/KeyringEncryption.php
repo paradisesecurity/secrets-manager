@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace ParadiseSecurity\Component\SecretsManager\Key\Encryption;
 
 use ParadiseSecurity\Component\SecretsManager\Adapter\Encryption\EncryptionAdapterInterface;
-use ParadiseSecurity\Component\SecretsManager\Encryption\MessageEncryptionRequest;
+use ParadiseSecurity\Component\SecretsManager\Encryption\Request\Builder\EncryptionRequestBuilder;
 use ParadiseSecurity\Component\SecretsManager\Exception\KeyringEncryptionException;
 use ParadiseSecurity\Component\SecretsManager\Key\KeyInterface;
 use ParagonIE\HiddenString\HiddenString;
-use ParadiseSecurity\Component\SecretsManager\Encryption\EncryptionRequestInterface;
+
 
 /**
  * Handles encryption/decryption of keyring data.
@@ -32,10 +32,9 @@ final class KeyringEncryption
      */
     public function encrypt(string $serializedData, KeyInterface $encryptionKey): string
     {
-        $request = new MessageEncryptionRequest(
-            new HiddenString($serializedData),
-            $encryptionKey
-        );
+        $request = EncryptionRequestBuilder::create()
+            ->withKey($encryptionKey)
+            ->buildForMessage(new HiddenString($serializedData));
         
         try {
             return $this->encryptionAdapter->encrypt($request);
@@ -49,11 +48,10 @@ final class KeyringEncryption
 
     public function decrypt(string $ciphertext, KeyInterface $encryptionKey): string
     {
-        $request = new MessageEncryptionRequest(
-            new HiddenString($ciphertext),
-            $encryptionKey
-        );
-        
+        $request = EncryptionRequestBuilder::create()
+            ->withKey($encryptionKey)
+            ->buildForMessage(new HiddenString($ciphertext));
+       
         try {
             $decrypted = $this->encryptionAdapter->decrypt($request);
             return $decrypted->getString();
@@ -67,21 +65,19 @@ final class KeyringEncryption
 
     public function verifyMAC(KeyInterface $authKey, string $mac, string $uniqueId): bool
     {
-        $request = new MessageEncryptionRequest(
-            new HiddenString($uniqueId),
-            $authKey,
-            [EncryptionRequestInterface::MAC => $mac]
-        );
+        $request = EncryptionRequestBuilder::create()
+            ->withKey($authKey)
+            ->withMac($mac)
+            ->buildForMessage(new HiddenString($uniqueId));
 
         return $this->encryptionAdapter->verify($request);
     }
 
     public function generateMAC(KeyInterface $authKey, string $data): string
     {
-        $request = new MessageEncryptionRequest(
-            new HiddenString($data),
-            $authKey
-        );
+        $request = EncryptionRequestBuilder::create()
+            ->withKey($authKey)
+            ->buildForMessage(new HiddenString($data));
         
         try {
             return $this->encryptionAdapter->authenticate($request);

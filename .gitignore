@@ -1,13 +1,6 @@
 vendor/
-config/secrets-manager/test/keyring/*.keyring
-config/secrets-manager/test/keyring/*.checksum
-config/secrets-manager/test/master-keys/*.key
-config/secrets-manager/test/config.json
-config/secrets-manager/test/secrets/*.vault
-docs/getting-started.md
-docs/examples.md
-docs/configuration.md
-docs/architecture.md
+config/secrets-manager/test/
+docs/todo
 .phpunit.cache/
 
 composer.phar

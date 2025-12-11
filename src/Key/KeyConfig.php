@@ -41,11 +41,7 @@ final class KeyConfig implements KeyConfigInterface
         KeyType|string $type,
         array $config = [],
     ) {
-        foreach ($config as $key => $value) {
-            if (is_string($key)) {
-                $this->processConfiguration($key, $value);
-            }
-        }
+        $this->applyLegacyConfiguration($config);
 
         if (is_string($type)) {
             $this->type = KeyType::fromString($type);

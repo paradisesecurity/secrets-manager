@@ -6,27 +6,32 @@ namespace ParadiseSecurity\Component\SecretsManager\Builder;
 
 use League\Flysystem\Filesystem;
 use League\Flysystem\Local\LocalFilesystemAdapter;
+use ParadiseSecurity\Component\SecretsManager\Adapter\Filesystem\FlysystemFilesystemAdapter;
+use ParadiseSecurity\Component\SecretsManager\Adapter\Filesystem\FilesystemAdapterInterface;
 use ParadiseSecurity\Component\SecretsManager\File\FilesystemManager;
 use ParadiseSecurity\Component\SecretsManager\File\FilesystemManagerInterface;
-use ParadiseSecurity\Component\SecretsManager\Provider\MasterKeyProviderInterface;
-use ParadiseSecurity\Component\SecretsManager\Adapter\Filesystem\FlysystemFilesystemAdapter;
-use ParadiseSecurity\Component\SecretsManager\Storage\FileBasedKeyStorage;
-use ParadiseSecurity\Component\SecretsManager\Storage\EnvironmentBasedKeyStorage;
-use ParadiseSecurity\Component\ServiceRegistry\Registry\ServiceRegistry;
-use ParadiseSecurity\Component\SecretsManager\Storage\KeyStorageInterface;
 use ParadiseSecurity\Component\SecretsManager\Loader\DelegatingKeyLoader;
 use ParadiseSecurity\Component\SecretsManager\Provider\MasterKeyProvider;
+use ParadiseSecurity\Component\SecretsManager\Provider\MasterKeyProviderInterface;
 use ParadiseSecurity\Component\SecretsManager\Storage\Env\EnvFileManager;
+use ParadiseSecurity\Component\SecretsManager\Storage\EnvironmentBasedKeyStorage;
+use ParadiseSecurity\Component\SecretsManager\Storage\FileBasedKeyStorage;
+use ParadiseSecurity\Component\SecretsManager\Storage\KeyStorageInterface;
 use ParadiseSecurity\Component\SecretsManager\Storage\Serialization\KeySerializer;
+use ParadiseSecurity\Component\ServiceRegistry\Registry\ServiceRegistry;
 
 /**
- * Sub-builder for filesystem and storage configuration.
+ * Builder for creating configured FilesystemManager instances.
+ * 
+ * Provides fluent interface for setting up filesystem structure
+ * with sensible defaults.
  */
 final class StorageBuilder
 {
     private string $masterKeyStorage = 'env';
     private ?string $envFile = '.env';
     private array $paths = [];
+    private array $customAdapters = [];
 
     // Reusable services
     private ?KeySerializer $keySerializer = null;
@@ -44,62 +49,88 @@ final class StorageBuilder
         return $this;
     }
 
+    /**
+     * Sets base paths for storage.
+     * 
+     * @param array{root: string, package: string} $paths Path configuration
+     */
     public function withPaths(array $paths): self
     {
         $this->paths = $paths;
         return $this;
     }
 
+    /**
+     * Adds a custom adapter for a connection.
+     * 
+     * @param FilesystemAdapterInterface $adapter Filesystem adapter
+     * @param string $connection Connection name
+     * @param int $priority Priority (default 0)
+     */
+    public function withCustomAdapter(
+        FilesystemAdapterInterface $adapter,
+        string $connection,
+        int $priority = 0
+    ): self {
+        $this->customAdapters[] = [$adapter, $connection, $priority];
+        return $this;
+    }
+
+    /**
+     * Builds the FilesystemManager.
+     * 
+     * Creates default adapters for standard connections if paths are provided.
+     */
     public function build(): FilesystemManagerInterface
     {
-        $root = $this->paths['root'];
-        $package = $this->paths['package'];
+        $adapters = [];
 
-        // Create filesystem adapters
-        $keyringAdapter = new LocalFilesystemAdapter($package . '/keyring');
-        $keyringStorage = new Filesystem($keyringAdapter);
-        $keyringWrapper = new FlysystemFilesystemAdapter(
-            $keyringStorage,
-            $package . '/keyring'
+        // Create default adapters if paths provided
+        if (!empty($this->paths)) {
+            $adapters = $this->createDefaultAdapters();
+        }
+
+        // Add custom adapters
+        $adapters = array_merge($adapters, $this->customAdapters);
+
+        return new FilesystemManager($adapters);
+    }
+
+    /**
+     * Creates default filesystem adapters from configured paths.
+     * 
+     * @return array<array{FilesystemAdapterInterface, string, int}>
+     */
+    private function createDefaultAdapters(): array
+    {
+        $root = $this->paths['root'] ?? throw new \InvalidArgumentException(
+            'Root path is required'
+        );
+        $package = $this->paths['package'] ?? throw new \InvalidArgumentException(
+            'Package path is required'
         );
 
-        $checksumAdapter = new LocalFilesystemAdapter($package . '/keyring');
-        $checksumStorage = new Filesystem($checksumAdapter);
-        $checksumWrapper = new FlysystemFilesystemAdapter(
-            $checksumStorage,
-            $package . '/keyring'
-        );
-
-        $envAdapter = new LocalFilesystemAdapter($root);
-        $envStorage = new Filesystem($envAdapter);
-        $envWrapper = new FlysystemFilesystemAdapter(
-            $envStorage,
-            $root
-        );
-
-        $masterKeysAdapter = new LocalFilesystemAdapter($package . '/master-keys');
-        $masterKeysStorage = new Filesystem($masterKeysAdapter);
-        $masterKeysWrapper = new FlysystemFilesystemAdapter(
-            $masterKeysStorage,
-            $package . '/master-keys'
-        );
-
-        $vaultAdapter = new LocalFilesystemAdapter($package . '/vault');
-        $vaultStorage = new Filesystem($vaultAdapter);
-        $vaultWrapper = new FlysystemFilesystemAdapter(
-            $vaultStorage,
-            $package . '/vault'
-        );
-
-        $filesystemConfig = [
-            [$keyringWrapper, FilesystemManagerInterface::KEYRING],
-            [$checksumWrapper, FilesystemManagerInterface::CHECKSUM],
-            [$envWrapper, FilesystemManagerInterface::ENVIRONMENT],
-            [$masterKeysWrapper, FilesystemManagerInterface::MASTER_KEYS],
-            [$vaultWrapper, FilesystemManagerInterface::VAULT],
+        return [
+            $this->createAdapter($package . '/keyring', FilesystemManagerInterface::KEYRING),
+            $this->createAdapter($package . '/keyring', FilesystemManagerInterface::CHECKSUM),
+            $this->createAdapter($root, FilesystemManagerInterface::ENVIRONMENT),
+            $this->createAdapter($package . '/master-keys', FilesystemManagerInterface::MASTER_KEYS),
+            $this->createAdapter($package . '/secrets', FilesystemManagerInterface::VAULT),
         ];
+    }
 
-        return new FilesystemManager($filesystemConfig);
+    /**
+     * Creates a filesystem adapter tuple.
+     * 
+     * @return array{FilesystemAdapterInterface, string, int}
+     */
+    private function createAdapter(string $path, string $connection, int $priority = 0): array
+    {
+        $localAdapter = new LocalFilesystemAdapter($path);
+        $flysystem = new Filesystem($localAdapter);
+        $wrapper = new FlysystemFilesystemAdapter($flysystem, $path);
+
+        return [$wrapper, $connection, $priority];
     }
 
     public function buildMasterKeyProvider(FilesystemManagerInterface $filesystemManager): MasterKeyProviderInterface
@@ -129,7 +160,7 @@ final class StorageBuilder
         // Create loader and provider
         $loader = new DelegatingKeyLoader($storageRegistry);
 
-        return new MasterKeyProvider($loader, $this->masterKeyStorage);
+        return MasterKeyProvider::createDefault($loader, $this->masterKeyStorage);
     }
 
     private function getKeySerializer(): KeySerializer

@@ -6,9 +6,10 @@ namespace ParadiseSecurity\Component\SecretsManager\Test\Encryption;
 
 use PHPUnit\Framework\TestCase;
 use ParadiseSecurity\Component\SecretsManager\Adapter\Encryption\EncryptionAdapterInterface;
-use ParadiseSecurity\Component\SecretsManager\Encryption\EncryptionRequestInterface;
+use ParadiseSecurity\Component\SecretsManager\Encryption\Request\EncryptionRequestInterface;
 use ParadiseSecurity\Component\SecretsManager\Adapter\Encryption\HaliteEncryptionAdapter;
-use ParadiseSecurity\Component\SecretsManager\Encryption\MessageEncryptionRequest;
+use ParadiseSecurity\Component\SecretsManager\Encryption\Request\MessageEncryptionRequest;
+use ParadiseSecurity\Component\SecretsManager\Encryption\Request\Builder\EncryptionRequestBuilder;
 use ParadiseSecurity\Component\SecretsManager\Exception\UnableToEncryptMessageException;
 use ParadiseSecurity\Component\SecretsManager\Adapter\KeyFactory\HaliteKeyFactoryAdapter;
 use ParadiseSecurity\Component\SecretsManager\Adapter\KeyFactory\KeyFactoryAdapterInterface;
@@ -31,10 +32,9 @@ final class HaliteEncryptionAdapterTest extends TestCase
     {
         $adapter = $this->getEncryptionAdapter();
         $message = 'test message';
-        $request = new MessageEncryptionRequest(
-            new HiddenString($message),
-            $this->getSymmetricAuthenticationKey(),
-        );
+        $request = EncryptionRequestBuilder::create()
+            ->withKey($this->getSymmetricAuthenticationKey())
+            ->buildForMessage(new HiddenString($message));
         $mac = $adapter->authenticate($request);
         $request->setMac($mac);
         $this->assertTrue(
@@ -47,10 +47,9 @@ final class HaliteEncryptionAdapterTest extends TestCase
         $key = $this->getSymmetricAuthenticationKey();
         $adapter = $this->getEncryptionAdapter();
         $message = 'test message';
-        $request = new MessageEncryptionRequest(
-            new HiddenString($message),
-            $key,
-        );
+        $request = EncryptionRequestBuilder::create()
+            ->withKey($key)
+            ->buildForMessage(new HiddenString($message));
         $request->setChooseEncoder(true);
         $mac = $adapter->authenticate($request);
         $badRequest = new MessageEncryptionRequest(

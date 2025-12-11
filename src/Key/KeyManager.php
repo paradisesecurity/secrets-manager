@@ -229,7 +229,7 @@ final class KeyManager implements KeyManagerInterface
         try {
             // Read the checksum file contents
             $checksumContents = $this->keyringIO->readChecksumData();
-            
+
             // Parse the stored checksum and signature from the checksum file
             $storedChecksum = $this->integrityVerifier->parseChecksumFile($checksumContents);
 
